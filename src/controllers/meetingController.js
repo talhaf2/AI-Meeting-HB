@@ -29,6 +29,7 @@ exports.getAvailability = async (req, res) => {
         if (availabilities.length === 0) {
             return res.json({ message: 'No available slots found.' });
         }
+        
 
         const slotsByDay = {};
         availabilities.forEach(slot => {
@@ -37,21 +38,24 @@ exports.getAvailability = async (req, res) => {
             slotsByDay[date].push(slot);
         });
 
-        const latestDay = Object.keys(slotsByDay).sort().pop();
-        const latestSlots = slotsByDay[latestDay];
 
-        const readableSlots = latestSlots.map(slot => ({
+        const firstDay = Object.keys(slotsByDay).sort().shift();
+        const firstSlots = slotsByDay[firstDay];
+
+
+        const readableSlots = firstSlots.map(slot => ({
             start: msToPacificISO(slot.startMillisUtc),
             end: msToPacificISO(slot.endMillisUtc),
             startMillisUtc: slot.startMillisUtc,
             endMillisUtc: slot.endMillisUtc
         }));
-
+        
         res.json({
-            date: latestDay,
+            date: firstDay,
             slots: readableSlots,
             timezone: DEFAULT_TIMEZONE
         });
+        
     } catch (error) {
         console.error(error);
         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
