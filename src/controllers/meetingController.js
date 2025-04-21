@@ -71,8 +71,7 @@ exports.bookMeeting = async (req, res) => {
             projDesc,
             userRole,
             ProjLoc,
-            phone,
-            dateOfAppointment
+            phone
         } = req.body;
 
         if (!slug || !startTime || !endTime || !firstName || !email) {
@@ -100,7 +99,8 @@ exports.bookMeeting = async (req, res) => {
                 },
                 {
                     name: "Please provide any details to help prepare for our meeting, such as the site address.",
-                    value: projDesc + " and the location is: " + ProjLoc
+                    value: "User Role: " + userRole + "\n" +  
+                    issue + " and the project location is: " + ProjLoc
                 }
             ]
         };
