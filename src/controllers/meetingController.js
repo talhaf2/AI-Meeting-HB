@@ -86,11 +86,10 @@ exports.bookMeeting = async (req, res) => {
         const startTimePacific = DateTime.fromISO(startTime, { zone: DEFAULT_TIMEZONE }).toMillis();
         const endTimePacific = DateTime.fromISO(endTime, { zone: DEFAULT_TIMEZONE }).toMillis();
         
-
         const payload = {
             slug,
-            startTime: startTimePacific,
-            endTime: endTimePacific,
+            startTime: startTime,
+            endTime: endTime,
             duration: 900000,
             firstName,
             lastName: lastName || " ",
