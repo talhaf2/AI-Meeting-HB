@@ -78,6 +78,9 @@ exports.bookMeeting = async (req, res) => {
             phone
         } = req.body;
 
+        console.log(req.body);
+        
+
         if (!slug || !startTime || !endTime || !firstName || !email) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
@@ -116,7 +119,7 @@ exports.bookMeeting = async (req, res) => {
             }
         });
 
-        res.json(response.data);
+        res.json({data: response.data, message: 1});
     } catch (error) {
         console.error(error.response?.data || error.message);
         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
