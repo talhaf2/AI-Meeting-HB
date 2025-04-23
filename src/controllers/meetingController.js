@@ -102,8 +102,8 @@ exports.bookMeeting = async (req, res) => {
         
         const payload = {
             slug,
-            startTime: startTime,
-            endTime: endTime,
+            startTime: startTime+"-07:00",
+            endTime: endTime+"-07:00",
             duration: 900000,
             firstName,
             lastName: lastName || " ",
