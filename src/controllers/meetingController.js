@@ -156,7 +156,7 @@ exports.getAllMeetingLinks = async (req, res) => {
 
 exports.getSlug = async (req, res) => {
     try {
-        const { userRole, userNeed } = req.body;
+        const { userRole, userNeed } = req.query;
 
         if (typeof userRole !== 'number' || typeof userNeed !== 'number') {
           return res.status(400).json({ error: 'Invalid input. Expecting numeric role and intent.' });
