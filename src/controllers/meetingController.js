@@ -9,6 +9,17 @@ function msToPacificISO(ms) {
     return DateTime.fromMillis(ms, { zone: DEFAULT_TIMEZONE }).toISO({ includeOffset: true, suppressMilliseconds: true });
 }
 
+// Helper function to get meeting link slug based on role and intent
+const getSlugFromSelection = (role, intent) => {
+    if (role === 1) {
+      return 'tfarooq/aec-professional';
+    }
+    if (role === 0 && intent === 0) {
+      return 'tfarooq/homeowner';
+    }
+    return 'tfarooq/aec-professional';
+  };
+
 exports.getAvailability = async (req, res) => {
     try {
         const { slug } = req.query;
@@ -138,6 +149,24 @@ exports.getAllMeetingLinks = async (req, res) => {
         });
         res.json(response.data);
     } catch (error) {
+        res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+    }
+};
+
+
+exports.getSlug = async (req, res) => {
+    try {
+        const { userRole, userNeed } = req.body;
+
+        if (typeof userRole !== 'number' || typeof userNeed !== 'number') {
+          return res.status(400).json({ error: 'Invalid input. Expecting numeric role and intent.' });
+        }
+      
+        const slug = getSlugFromSelection(userRole, userNeed);
+        return res.json({ slug });
+        
+    } catch (error) {
+        console.error(error);
         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
     }
 };
