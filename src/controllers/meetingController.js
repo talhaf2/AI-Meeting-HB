@@ -156,15 +156,18 @@ exports.getAllMeetingLinks = async (req, res) => {
 
 exports.getSlug = async (req, res) => {
     try {
-        const { userRole, userNeed } = req.query;
+        let { userRole, userNeed } = req.query;
 
-        if (typeof userRole !== 'number' || typeof userNeed !== 'number') {
-          return res.status(400).json({ error: 'Invalid input. Expecting numeric role and intent.' });
+        userRole = parseInt(userRole, 10);
+        userNeed = parseInt(userNeed, 10);
+
+        if (isNaN(userRole) || isNaN(userNeed)) {
+            return res.status(400).json({ error: 'Invalid input. Expecting numeric role and intent.' });
         }
-      
+
         const slug = getSlugFromSelection(userRole, userNeed);
         return res.json({ slug });
-        
+
     } catch (error) {
         console.error(error);
         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
