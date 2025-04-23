@@ -20,6 +20,11 @@ const getSlugFromSelection = (role, intent) => {
     return 'tfarooq/aec-professional';
   };
 
+  const hasMinusSevenOffset = (timeStr) => {
+    return timeStr.endsWith('-07:00');
+  };
+  
+
 exports.getAvailability = async (req, res) => {
     try {
         const { slug } = req.query;
@@ -88,10 +93,7 @@ exports.bookMeeting = async (req, res) => {
             ProjLoc,
             phone
         } = req.body;
-
-        console.log(req.body);
         
-
         if (!slug || !startTime || !endTime || !firstName || !email) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
@@ -99,11 +101,20 @@ exports.bookMeeting = async (req, res) => {
         // Convert startTime and endTime to Pacific Time
         const startTimePacific = DateTime.fromISO(startTime, { zone: DEFAULT_TIMEZONE }).toMillis();
         const endTimePacific = DateTime.fromISO(endTime, { zone: DEFAULT_TIMEZONE }).toMillis();
+
+            // Append "-07:00" only if no timezone offset present
+            const formattedStartTime = hasMinusSevenOffset(startTime)
+            ? startTime
+            : startTime + '-07:00';
+
+        const formattedEndTime = hasMinusSevenOffset(endTime)
+            ? endTime
+            : endTime + '-07:00';
         
         const payload = {
             slug,
-            startTime: startTime+"-07:00",
-            endTime: endTime+"-07:00",
+            startTime: formattedStartTime,
+            endTime: formattedEndTime,
             duration: 900000,
             firstName,
             lastName: lastName || " ",
