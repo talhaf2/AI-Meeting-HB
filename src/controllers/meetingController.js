@@ -27,10 +27,15 @@ const getSlugFromSelection = (role, intent) => {
 
 exports.getAvailability = async (req, res) => {
     try {
-        const { slug } = req.query;
-        if (!slug) {
-            return res.status(400).json({ error: 'slug is required' });
+        const { userRole, userNeed } = req.query;
+
+        if (!userRole || !userNeed) {
+            return res.status(400).json({ error: 'userRole. userNeed is required' });
         }
+
+        let slug = getSlugFromSelection(userRole, userNeed)
+
+
 
         const encodedSlug = encodeURIComponent(slug);
         const url = `https://api.hubapi.com/scheduler/v3/meetings/meeting-links/book/availability-page/${encodedSlug}?timezone=${encodeURIComponent(DEFAULT_TIMEZONE)}`;
