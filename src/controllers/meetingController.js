@@ -167,7 +167,7 @@ exports.getAllMeetingLinks = async (req, res) => {
 
 exports.getSlug = async (req, res) => {
     try {
-        let { userRole, userNeed } = req.query;
+        let { userRole, userNeed } = req.body;
 
         userRole = parseInt(userRole, 10);
         userNeed = parseInt(userNeed, 10);
