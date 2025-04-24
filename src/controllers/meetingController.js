@@ -97,13 +97,16 @@ exports.bookMeeting = async (req, res) => {
         if (!slug || !startTime || !endTime || !firstName || !email) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
-
-        // Convert startTime and endTime to Pacific Time
-        const startTimePacific = DateTime.fromISO(startTime, { zone: DEFAULT_TIMEZONE }).toMillis();
-        const endTimePacific = DateTime.fromISO(endTime, { zone: DEFAULT_TIMEZONE }).toMillis();
+        
+        let userRoleValue = ""
+        if (userRole == 0 || userRole == "0"){
+            userRoleValue = "HomeOwner"
+        } else {
+            userRoleValue = "AEC Professional"
+        }
 
             // Append "-07:00" only if no timezone offset present
-            const formattedStartTime = hasMinusSevenOffset(startTime)
+        const formattedStartTime = hasMinusSevenOffset(startTime)
             ? startTime
             : startTime + '-07:00';
 
@@ -127,7 +130,7 @@ exports.bookMeeting = async (req, res) => {
                 },
                 {
                     name: "Please provide any details to help prepare for our meeting, such as the site address.",
-                    value: "User Role: " + userRole + "\n" +  
+                    value: "User Role: " + userRoleValue + "\n" +  
                     issue + " and the project location is: " + ProjLoc
                 }
             ]
