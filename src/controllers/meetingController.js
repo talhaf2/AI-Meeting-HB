@@ -86,23 +86,27 @@ exports.getAvailability = async (req, res) => {
 exports.bookMeeting = async (req, res) => {
     try {
         const {
-            slug,
+            userRole,
+            userNeed,
             startTime,
             endTime,
             firstName,
             lastName,
             email,
-            issue,
             projDesc,
-            userRole,
+            issue,
             ProjLoc,
             phone
         } = req.body;
         
-        if (!slug || !startTime || !endTime || !firstName || !email) {
+        if (userRole === undefined || userRole === null ||
+            userNeed === undefined || userNeed === null || 
+            !startTime || !endTime || !firstName || !email) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
-        
+
+        let slug = getSlugFromSelection(userRole, userNeed)
+
         let userRoleValue = ""
         if (userRole == 0 || userRole == "0"){
             userRoleValue = "HomeOwner"
