@@ -97,58 +97,56 @@ async function fetchAvailability(slug, monthoffset) {
 exports.getAvailability = async (req, res) => {
     try {
         const { userRole, userNeed } = req.query;
-        if (userRole == null || userNeed == null) {
+        if (!userRole || !userNeed) {
             return res.status(400).json({ error: 'userRole and userNeed are required' });
         }
 
-        let slug = getSlugFromSelection(userRole, userNeed);
-
-        // Decide whether to fetch next month as well
+        const slug = getSlugFromSelection(userRole, userNeed);
         const now = DateTime.now().setZone(DEFAULT_TIMEZONE);
         const currentDay = now.day;
+        const limitDate = now.plus({ days: 15 }).endOf('day');
+
         let slots = [];
 
         // Always fetch current month
-        const slotsCurrentMonth = await fetchAvailability(slug, 0);
-        slots = slots.concat(slotsCurrentMonth);
+        const currentMonthSlots = await fetchAvailability(slug, 0);
+        slots = slots.concat(currentMonthSlots);
 
-        // If today is after the 20th, fetch next month as well
+        // If today is after the 20th, also fetch next month
         if (currentDay > 20) {
-            console.log("greater than 20");
-            
-            const slotsNextMonth = await fetchAvailability(slug, 1);
-            slots = slots.concat(slotsNextMonth);
+            const nextMonthSlots = await fetchAvailability(slug, 1);
+            slots = slots.concat(nextMonthSlots);
         }
 
-        if (slots.length === 0) {
+        if (!slots.length) {
             return res.json({ message: 'No available slots found.' });
         }
 
-        // Group slots by day (in Pacific Time)
-        const slotsByDay = {};
-        slots.forEach(slot => {
-            const date = DateTime.fromMillis(slot.startMillisUtc).setZone(DEFAULT_TIMEZONE).toISODate();
-            if (!slotsByDay[date]) slotsByDay[date] = [];
-            slotsByDay[date].push({
+        // Filter and map slots to desired format
+        const filteredSlots = slots
+            .map(slot => ({
                 start: msToPacificISO(slot.startMillisUtc),
-                end: msToPacificISO(slot.endMillisUtc),
-                startMillisUtc: slot.startMillisUtc,
-                endMillisUtc: slot.endMillisUtc
+                end: msToPacificISO(slot.endMillisUtc)
+            }))
+            .filter(slot => {
+                const slotDate = DateTime.fromISO(slot.start);
+                return slotDate >= now && slotDate <= limitDate;
             });
-        });
 
-        if (Object.keys(slotsByDay).length === 0) {
-            return res.json({ message: 'No available slots found.' });
+        if (!filteredSlots.length) {
+            return res.json({ message: 'No available slots found in the next 15 days.' });
         }
 
         res.json({
-            slotsByDay,
+            slots: filteredSlots,
             timezone: DEFAULT_TIMEZONE
         });
 
     } catch (error) {
         console.error(error);
-        res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+        res.status(error.response?.status || 500).json({
+            error: error.response?.data || error.message
+        });
     }
 };
 
