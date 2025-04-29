@@ -25,63 +25,133 @@ const getSlugFromSelection = (role, intent) => {
   };
   
 
+// exports.getAvailability = async (req, res) => {
+//     try {
+//         const { userRole, userNeed } = req.query;
+
+//         if (!userRole || !userNeed) {
+//             return res.status(400).json({ error: 'userRole. userNeed is required' });
+//         }
+
+//         let slug = getSlugFromSelection(userRole, userNeed)
+
+//         const encodedSlug = encodeURIComponent(slug);
+//         const url = `https://api.hubapi.com/scheduler/v3/meetings/meeting-links/book/availability-page/${encodedSlug}?timezone=${encodeURIComponent(DEFAULT_TIMEZONE)}`;
+//         const response = await axios.get(url, {
+//             headers: {
+//                 Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+//                 'Content-Type': 'application/json'
+//             }
+//         });
+
+//         const availabilities = response.data?.linkAvailability?.linkAvailabilityByDuration?.['900000']?.availabilities || [];
+//         if (availabilities.length === 0) {
+//             return res.json({ message: 'No available slots found.' });
+//         }
+        
+
+//         const slotsByDay = {};
+//         availabilities.forEach(slot => {
+//             const date = DateTime.fromMillis(slot.startMillisUtc).setZone(DEFAULT_TIMEZONE).toISODate();
+//             if (!slotsByDay[date]) slotsByDay[date] = [];
+//             slotsByDay[date].push(slot);
+//         });
+
+
+//         const firstDay = Object.keys(slotsByDay).sort().shift();
+//         const firstSlots = slotsByDay[firstDay];
+
+
+//         const readableSlots = firstSlots.map(slot => ({
+//             start: msToPacificISO(slot.startMillisUtc),
+//             end: msToPacificISO(slot.endMillisUtc),
+//             startMillisUtc: slot.startMillisUtc,
+//             endMillisUtc: slot.endMillisUtc
+//         }));
+        
+//         res.json({
+//             date: firstDay,
+//             slots: readableSlots,
+//             timezone: DEFAULT_TIMEZONE
+//         });
+        
+//     } catch (error) {
+//         console.error(error);
+//         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+//     }
+// };
+
+
+// Helper: Fetch availability for a given month offset
+async function fetchAvailability(slug, monthoffset) {
+    const url = `https://api.hubapi.com/scheduler/v3/meetings/meeting-links/book/availability-page/${encodeURIComponent(slug)}?timezone=${encodeURIComponent(DEFAULT_TIMEZONE)}&monthOffset=${monthoffset}`;
+    const response = await axios.get(url, {
+        headers: {
+            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    return response.data?.linkAvailability?.linkAvailabilityByDuration?.['900000']?.availabilities || [];
+}
+
 exports.getAvailability = async (req, res) => {
     try {
         const { userRole, userNeed } = req.query;
-
-        if (!userRole || !userNeed) {
-            return res.status(400).json({ error: 'userRole. userNeed is required' });
+        if (userRole == null || userNeed == null) {
+            return res.status(400).json({ error: 'userRole and userNeed are required' });
         }
 
-        let slug = getSlugFromSelection(userRole, userNeed)
+        let slug = getSlugFromSelection(userRole, userNeed);
 
+        // Decide whether to fetch next month as well
+        const now = DateTime.now().setZone(DEFAULT_TIMEZONE);
+        const currentDay = now.day;
+        let slots = [];
 
+        // Always fetch current month
+        const slotsCurrentMonth = await fetchAvailability(slug, 0);
+        slots = slots.concat(slotsCurrentMonth);
 
-        const encodedSlug = encodeURIComponent(slug);
-        const url = `https://api.hubapi.com/scheduler/v3/meetings/meeting-links/book/availability-page/${encodedSlug}?timezone=${encodeURIComponent(DEFAULT_TIMEZONE)}`;
-        const response = await axios.get(url, {
-            headers: {
-                Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
-        });
+        // If today is after the 20th, fetch next month as well
+        if (currentDay > 20) {
+            console.log("greater than 20");
+            
+            const slotsNextMonth = await fetchAvailability(slug, 1);
+            slots = slots.concat(slotsNextMonth);
+        }
 
-        const availabilities = response.data?.linkAvailability?.linkAvailabilityByDuration?.['900000']?.availabilities || [];
-        if (availabilities.length === 0) {
+        if (slots.length === 0) {
             return res.json({ message: 'No available slots found.' });
         }
-        
 
+        // Group slots by day (in Pacific Time)
         const slotsByDay = {};
-        availabilities.forEach(slot => {
+        slots.forEach(slot => {
             const date = DateTime.fromMillis(slot.startMillisUtc).setZone(DEFAULT_TIMEZONE).toISODate();
             if (!slotsByDay[date]) slotsByDay[date] = [];
-            slotsByDay[date].push(slot);
+            slotsByDay[date].push({
+                start: msToPacificISO(slot.startMillisUtc),
+                end: msToPacificISO(slot.endMillisUtc),
+                startMillisUtc: slot.startMillisUtc,
+                endMillisUtc: slot.endMillisUtc
+            });
         });
 
+        if (Object.keys(slotsByDay).length === 0) {
+            return res.json({ message: 'No available slots found.' });
+        }
 
-        const firstDay = Object.keys(slotsByDay).sort().shift();
-        const firstSlots = slotsByDay[firstDay];
-
-
-        const readableSlots = firstSlots.map(slot => ({
-            start: msToPacificISO(slot.startMillisUtc),
-            end: msToPacificISO(slot.endMillisUtc),
-            startMillisUtc: slot.startMillisUtc,
-            endMillisUtc: slot.endMillisUtc
-        }));
-        
         res.json({
-            date: firstDay,
-            slots: readableSlots,
+            slotsByDay,
             timezone: DEFAULT_TIMEZONE
         });
-        
+
     } catch (error) {
         console.error(error);
         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
     }
 };
+
 
 exports.bookMeeting = async (req, res) => {
     try {
