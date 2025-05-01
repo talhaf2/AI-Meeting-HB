@@ -17,70 +17,17 @@ const getSlugFromSelection = (role, intent) => {
     if (role === 0 && intent === 0) {
       return 'tfarooq/homeowner';
     }
-    return 'tfarooq/aec-professional';
+    if (role === 0 && intent === 1) {
+        return 'tfarooq/homeowner-qoute';
+    }
+    if (role === 0 && intent === 2) {
+        return 'tfarooq/homeowner-other';
+    }
   };
 
   const hasMinusSevenOffset = (timeStr) => {
     return timeStr.endsWith('-07:00');
   };
-  
-
-// exports.getAvailability = async (req, res) => {
-//     try {
-//         const { userRole, userNeed } = req.query;
-
-//         if (!userRole || !userNeed) {
-//             return res.status(400).json({ error: 'userRole. userNeed is required' });
-//         }
-
-//         let slug = getSlugFromSelection(userRole, userNeed)
-
-//         const encodedSlug = encodeURIComponent(slug);
-//         const url = `https://api.hubapi.com/scheduler/v3/meetings/meeting-links/book/availability-page/${encodedSlug}?timezone=${encodeURIComponent(DEFAULT_TIMEZONE)}`;
-//         const response = await axios.get(url, {
-//             headers: {
-//                 Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-//                 'Content-Type': 'application/json'
-//             }
-//         });
-
-//         const availabilities = response.data?.linkAvailability?.linkAvailabilityByDuration?.['900000']?.availabilities || [];
-//         if (availabilities.length === 0) {
-//             return res.json({ message: 'No available slots found.' });
-//         }
-        
-
-//         const slotsByDay = {};
-//         availabilities.forEach(slot => {
-//             const date = DateTime.fromMillis(slot.startMillisUtc).setZone(DEFAULT_TIMEZONE).toISODate();
-//             if (!slotsByDay[date]) slotsByDay[date] = [];
-//             slotsByDay[date].push(slot);
-//         });
-
-
-//         const firstDay = Object.keys(slotsByDay).sort().shift();
-//         const firstSlots = slotsByDay[firstDay];
-
-
-//         const readableSlots = firstSlots.map(slot => ({
-//             start: msToPacificISO(slot.startMillisUtc),
-//             end: msToPacificISO(slot.endMillisUtc),
-//             startMillisUtc: slot.startMillisUtc,
-//             endMillisUtc: slot.endMillisUtc
-//         }));
-        
-//         res.json({
-//             date: firstDay,
-//             slots: readableSlots,
-//             timezone: DEFAULT_TIMEZONE
-//         });
-        
-//     } catch (error) {
-//         console.error(error);
-//         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
-//     }
-// };
-
 
 // Helper: Fetch availability for a given month offset
 async function fetchAvailability(slug, monthoffset) {
