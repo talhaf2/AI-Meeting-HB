@@ -162,8 +162,7 @@ exports.bookMeeting = async (req, res) => {
                 },
                 {
                     name: "Please provide any details to help prepare for our meeting, such as the site address.",
-                    value: "User Role: " + userRoleValue + "\n" +  
-                    issue + " and the project location is: " + ProjLoc
+                    value: issue + " and the project location is: " + ProjLoc
                 }
             ]
         };
