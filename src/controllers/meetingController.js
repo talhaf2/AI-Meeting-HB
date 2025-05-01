@@ -11,19 +11,25 @@ function msToPacificISO(ms) {
 
 // Helper function to get meeting link slug based on role and intent
 const getSlugFromSelection = (role, intent) => {
-    if (role === 1) {
+    // Clean and convert to numbers
+    const parsedRole = Number(String(role).trim());
+    const parsedIntent = Number(String(intent).trim());
+  
+    if (parsedRole === 1) {
       return 'tfarooq/aec-professional';
     }
-    if (role === 0 && intent === 0) {
+    if (parsedRole === 0 && parsedIntent === 0) {
       return 'tfarooq/homeowner';
     }
-    if (role === 0 && intent === 1) {
-        return 'tfarooq/homeowner-qoute';
+    if (parsedRole === 0 && parsedIntent === 1) {
+      return 'tfarooq/homeowner-qoute';
     }
-    if (role === 0 && intent === 2) {
-        return 'tfarooq/homeowner-other';
+    if (parsedRole === 0 && parsedIntent === 2) {
+      return 'tfarooq/homeowner-other';
     }
+
   };
+  
 
   const hasMinusSevenOffset = (timeStr) => {
     return timeStr.endsWith('-07:00');
@@ -49,6 +55,8 @@ exports.getAvailability = async (req, res) => {
         }
 
         const slug = getSlugFromSelection(userRole, userNeed);
+        console.log("slug: ", slug);
+        
         const now = DateTime.now().setZone(DEFAULT_TIMEZONE);
         const currentDay = now.day;
         const limitDate = now.plus({ days: 15 }).endOf('day');
