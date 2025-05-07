@@ -210,6 +210,9 @@ exports.updateProjectRoleAndCreateDeal = async (req, res) => {
             appointment_set_      // e.g. "2025-05-20" (YYYY-MM-DD)
         } = req.body;
 
+        console.log("req.body", req.body);
+        
+
         // Validate input
         if (!contactId || !project_role__sales_rep || !dealName || !appointment_set_) {
             return res.status(400).json({ error: 'contactId, projectRole, dealName, and appointmentDate are required.' });
