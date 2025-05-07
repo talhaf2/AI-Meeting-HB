@@ -47,6 +47,25 @@ async function fetchAvailability(slug, monthoffset) {
     return response.data?.linkAvailability?.linkAvailabilityByDuration?.['900000']?.availabilities || [];
 }
 
+async function getHubspotOwnerId(contactId) {
+    try {
+        const response = await axios.get(
+            `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
+            {
+                params: { properties: 'hubspot_owner_id' },
+                headers: {
+                    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+        return response.data.properties.hubspot_owner_id || null;
+    } catch (error) {
+        console.error('Error fetching hubspot_owner_id:', error.response?.data || error.message);
+        return null;
+    }
+}
+
 exports.getAvailability = async (req, res) => {
     try {
         const { userRole, userNeed } = req.query;
@@ -179,6 +198,86 @@ exports.bookMeeting = async (req, res) => {
     } catch (error) {
         console.error(error.response?.data || error.message);
         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+    }
+};
+
+exports.updateProjectRoleAndCreateDeal = async (req, res) => {
+    try {
+        const {
+            contactId,
+            project_role__sales_rep,         // e.g. "Homeowner", "Designer", etc.
+            dealName,            // e.g. "New Project Deal"
+            appointment_set_      // e.g. "2025-05-20" (YYYY-MM-DD)
+        } = req.body;
+
+        // Validate input
+        if (!contactId || !project_role__sales_rep || !dealName || !appointment_set_) {
+            return res.status(400).json({ error: 'contactId, projectRole, dealName, and appointmentDate are required.' });
+        }
+
+        // 1. Update the contact's project role
+        const contactUpdateResp = await axios.patch(
+            `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
+            {
+                properties: {
+                    project_role__sales_rep: project_role__sales_rep // Use the exact internal name of your property
+                }
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+         // 2. Get HubSpot owner ID for the contact
+         const hubspotOwnerId = await getHubspotOwnerId(contactId);
+
+        // 3. Create the deal and associate with the contact
+        const dealPayload = {
+            properties: {
+                dealname: dealName,
+                pipeline: "default",             // Replace with your pipeline ID if different
+                dealstage: "contractsent", // Replace with your actual stage ID
+                appointment_set_: appointment_set_, // Use the internal name of your property
+                customer_success_manager: hubspotOwnerId
+            },
+            associations: [
+                {
+                    to: { id: contactId },
+                    types: [
+                        {
+                            associationCategory: "HUBSPOT_DEFINED",
+                            associationTypeId: 3 // Contact-to-deal association
+                        }
+                    ]
+                }
+            ]
+        };
+
+        const dealCreateResp = await axios.post(
+            'https://api.hubapi.com/crm/v3/objects/deals',
+            dealPayload,
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        res.json({
+            contact: contactUpdateResp.data,
+            deal: dealCreateResp.data,
+            message: 'Project role updated and deal created/associated successfully.'
+        });
+
+    } catch (error) {
+        console.error('HubSpot error:', error.response?.data || error.message);
+        res.status(error.response?.status || 500).json({
+            error: error.response?.data || error.message
+        });
     }
 };
 
