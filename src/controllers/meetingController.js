@@ -208,7 +208,7 @@ exports.updateProjectRoleAndCreateDeal = async (req, res) => {
         const webhookData = req.body; // Parsed JSON payload
         console.log('Received webhook data:', webhookData);
         
-        return webhookData
+        return res.json({ webhookData });
 
         const {
             contactId,
