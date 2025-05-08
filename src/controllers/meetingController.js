@@ -204,12 +204,6 @@ exports.bookMeeting = async (req, res) => {
 exports.updateProjectRoleAndCreateDeal = async (req, res) => {
     try {
 
-
-        const webhookData = req.body; // Parsed JSON payload
-        console.log('Received webhook data:', webhookData);
-        
-        return res.json({ webhookData });
-
         const {
             contactId,
             project_role__sales_rep,         // e.g. "Homeowner", "Designer", etc.
