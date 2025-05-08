@@ -203,18 +203,27 @@ exports.bookMeeting = async (req, res) => {
 
 exports.updateProjectRoleAndCreateDeal = async (req, res) => {
     try {
+
+
+        const webhookData = req.body; // Parsed JSON payload
+        console.log('Received webhook data:', webhookData);
+        
+        return webhookData
+
         const {
             contactId,
             project_role__sales_rep,         // e.g. "Homeowner", "Designer", etc.
-            dealName,            // e.g. "New Project Deal"
-            appointment_set_      // e.g. "2025-05-20" (YYYY-MM-DD)
+            phone,           // e.g. "New Project Deal"
+            address,
+            appointment_set_,     // e.g. "2025-05-20" (YYYY-MM-DD)
+            project_type
         } = req.body;
 
         console.log("req.body", req.body);
         
 
         // Validate input
-        if (!contactId || !project_role__sales_rep || !dealName || !appointment_set_) {
+        if (!contactId || !project_role__sales_rep || !phone || !appointment_set_) {
             return res.status(400).json({ error: 'contactId, projectRole, dealName, and appointmentDate are required.' });
         }
 
@@ -223,7 +232,9 @@ exports.updateProjectRoleAndCreateDeal = async (req, res) => {
             `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
             {
                 properties: {
-                    project_role__sales_rep: project_role__sales_rep // Use the exact internal name of your property
+                    project_role__sales_rep: project_role__sales_rep, // Use the exact internal name of your property
+                    phone: phone,
+                    address: address
                 }
             },
             {
@@ -240,11 +251,12 @@ exports.updateProjectRoleAndCreateDeal = async (req, res) => {
         // 3. Create the deal and associate with the contact
         const dealPayload = {
             properties: {
-                dealname: dealName,
+                dealname: "AI Voice Agent - " + phone,
                 pipeline: "default",             // Replace with your pipeline ID if different
                 dealstage: "contractsent", // Replace with your actual stage ID
                 appointment_set_: appointment_set_, // Use the internal name of your property
-                customer_success_manager: hubspotOwnerId
+                customer_success_manager: hubspotOwnerId,
+                project_type: project_type
             },
             associations: [
                 {
