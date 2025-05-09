@@ -331,7 +331,8 @@ exports.getSlug = async (req, res) => {
 exports.webhookTest = async (req, res) => {
     try {
         let wenhook = req.body;
-
+        console.log("wenhook: ", wenhook);
+        
         return res.json({ wenhook });
 
     } catch (error) {
