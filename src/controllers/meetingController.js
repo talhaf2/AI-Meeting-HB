@@ -326,10 +326,10 @@ exports.getSlug = async (req, res) => {
 
 exports.webhookTest = async (req, res) => {
     try {
-        let wenhook = req.body;
-        console.log("wenhook: ", wenhook);
+        let webhook = req.body;
+        console.log("webhook: ", webhook);
         
-        return res.json({ wenhook });
+        return res.json({ webhook });
 
     } catch (error) {
         console.error(error);
