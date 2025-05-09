@@ -8,6 +8,7 @@ router.post('/book', meetingController.bookMeeting);
 router.get('/links', meetingController.getAllMeetingLinks);
 router.post('/generate-slug', meetingController.getSlug);
 router.post('/update-contact', meetingController.updateProjectRoleAndCreateDeal);
+router.post('/webhook', meetingController.webhookTest);
 
 
 

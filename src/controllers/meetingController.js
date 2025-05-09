@@ -326,3 +326,16 @@ exports.getSlug = async (req, res) => {
         res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
     }
 };
+
+
+exports.webhookTest = async (req, res) => {
+    try {
+        let wenhook = req.body;
+
+        return res.json({ wenhook });
+
+    } catch (error) {
+        console.error(error);
+        res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+    }
+};
