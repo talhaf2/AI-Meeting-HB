@@ -30,10 +30,9 @@ const getSlugFromSelection = (role, intent) => {
 
   };
   
-
-  const hasMinusSevenOffset = (timeStr) => {
-    return timeStr.endsWith('-07:00');
-  };
+const hasMinusSevenOffset = (timeStr) => {
+return timeStr.endsWith('-07:00');
+};
 
 // Helper: Fetch availability for a given month offset
 async function fetchAvailability(slug, monthoffset) {
@@ -47,23 +46,7 @@ async function fetchAvailability(slug, monthoffset) {
     return response.data?.linkAvailability?.linkAvailabilityByDuration?.['900000']?.availabilities || [];
 }
 
-async function getMeetingtHostId(contactId) {
-    try {
-        const response = await axios.get(
-            `https://api.hubapi.com/engagements/v1/engagements/associated/contact/${contactId}/paged?limit=10`,
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-        return response.data.results[0].engagement.ownerId || null;
-    } catch (error) {
-        console.error('Error fetching hubspot_owner_id:', error.response?.data || error.message);
-        return null;
-    }
-}
+
 
 exports.getAvailability = async (req, res) => {
     try {
@@ -122,7 +105,6 @@ exports.getAvailability = async (req, res) => {
         });
     }
 };
-
 
 exports.bookMeeting = async (req, res) => {
     try {
@@ -233,6 +215,9 @@ exports.updateContactAndCreateDeal = async (req, res) => {
         // 2. Get HubSpot owner ID for the contact
         const OwnerId = await getMeetingtHostId(contactId);
 
+        console.log(OwnerId);
+        
+
         // 3. Create the deal and associate with the contact
         const dealPayload = {
             properties: {
@@ -281,109 +266,128 @@ exports.updateContactAndCreateDeal = async (req, res) => {
     }
 };
 
-// Get all meeting links (for admin or listing)
-exports.getAllMeetingLinks = async (req, res) => {
+
+///WEBHOOK POST CALL FOR LOGGING CONTACT AND DEAL INTO HUBSPOT...
+// Create new contact and deal
+async function createOrUpdateContactAndDeal(variables, from, preferred_appointment_start_time, project_type, accessToken) {
+    // 1. Search for contact by email
+    let contactId = null;
+    let contactResp = null;
+  
     try {
-        const url = 'https://api.hubapi.com/scheduler/v3/meetings/meeting-links';
-        const response = await axios.get(url, {
-            headers: {
-                Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        res.json(response.data);
-    } catch (error) {
-        res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
-    }
-};
-
-
-exports.getSlug = async (req, res) => {
-    try {
-        let { userRole, userNeed } = req.body;
-
-        userRole = parseInt(userRole, 10);
-        userNeed = parseInt(userNeed, 10);
-
-        if (isNaN(userRole) || isNaN(userNeed)) {
-            return res.status(400).json({ error: 'Invalid input. Expecting numeric role and intent.' });
+      const searchResp = await axios.post(
+        'https://api.hubapi.com/crm/v3/objects/contacts/search',
+        {
+          filterGroups: [{
+            filters: [{
+              propertyName: 'email',
+              operator: 'EQ',
+              value: variables.Email
+            }]
+          }],
+          properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
         }
-
-        const slug = getSlugFromSelection(userRole, userNeed);
-        return res.json({ slug });
-
-    } catch (error) {
-        console.error(error);
-        res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
-    }
-};
-
-
-exports.webhookTest = async (req, res) => {
-    try {
-        let {Name, 
-            Email, 
-            Location, 
-            userRoleValue, 
-            preferred_appointment_start_timem, 
-            contactId, 
-            project_type} = req.body.variables;
-
-        let {summary, from} = req.body
-        
-        let OwnerId;
-        // Validate input
-        if (!contactId) {
-            // Create Contact and store contact ID...
-        } else {
-            // Get HubSpot owner ID for the contact
-            OwnerId = await getMeetingtHostId(contactId);
-        }
-
-        // 1. Update the contact's project role, phone, and address
-        const contactUpdateResp = await axios.patch(
-            `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
-            {
-                properties: {
-                    project_role__sales_rep: userRoleValue, // Use the exact internal name of your property
-                    phone: phone,
-                    address: Location
-                }
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
-                    'Content-Type': 'application/json'
-                }
-            }
-        );
-
-        // 3. Create the deal and associate with the contact
-        const dealPayload = {
+      );
+  
+      if (searchResp.data.results && searchResp.data.results.length > 0) {
+        // Contact exists, update it
+        contactId = searchResp.data.results[0].id;
+        contactResp = await axios.patch(
+          `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
+          {
             properties: {
-                dealname: "AI Voice Agent - " + phone,
-                pipeline: "default",             // Replace with your pipeline ID if different
-                dealstage: "contractsent", // Replace with your actual stage ID
-                appointment_set_: preferred_appointment_start_time, // Use the internal name of your property
-                customer_success_manager: OwnerId,
-                project_type: project_type
-            },
-            associations: [
-                {
-                    to: { id: contactId },
-                    types: [
-                        {
-                            associationCategory: "HUBSPOT_DEFINED",
-                            associationTypeId: 3 // Contact-to-deal association
-                        }
-                    ]
-                }
-            ]
-        };
+              firstname: variables.Name,
+              phone: from,
+              address: variables.Location,
+              project_role__sales_rep: variables.userRoleValue,
+            }
+          },
+          {
+            headers: {
+              Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+      }
+    } catch (err) {
+      // If error is not "not found", throw
+      if (err.response && err.response.status !== 404) {
+        throw err;
+      }
+    }
+  
+    // If contact does not exist, create it
+    if (!contactId) {
+      contactResp = await axios.post(
+        'https://api.hubapi.com/crm/v3/objects/contacts',
+        {
+          properties: {
+            firstname: variables.Name,
+            email: variables.Email,
+            phone: from,
+            address: variables.Location,
+            project_role__sales_rep: variables.userRoleValue,
+          }
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      contactId = contactResp.data.id;
+    }
+  
+    // 2. Create deal associated with the contact
+    const dealPayload = {
+      properties: {
+        dealname: "AI Voice Agent - " + from,
+        pipeline: "default",
+        dealstage: "appointmentscheduled",
+        appointment_set_: preferred_appointment_start_time,
+        customer_success_manager: "", // Assign owner if needed
+        project_type: project_type
+      },
+      associations: [
+        {
+          to: { id: contactId },
+          types: [
+            {
+              associationCategory: "HUBSPOT_DEFINED",
+              associationTypeId: 3 // Contact-to-deal association
+            }
+          ]
+        }
+      ]
+    };
+  
+    const dealCreateResp = await axios.post(
+      'https://api.hubapi.com/crm/v3/objects/deals',
+      dealPayload,
+      {
+        headers: {
+          Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+  
+    return { contact: contactResp.data, deal: dealCreateResp.data };
+}
 
-        const dealCreateResp = await axios.post(
-            'https://api.hubapi.com/crm/v3/objects/deals',
-            dealPayload,
+//Get Meeting Host
+async function getMeetingHostId(contactId) {
+    try {
+        const response = await axios.get(
+            `https://api.hubapi.com/engagements/v1/engagements/associated/contact/${contactId}/paged?limit=100`,
             {
                 headers: {
                     Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
@@ -391,16 +395,117 @@ exports.webhookTest = async (req, res) => {
                 }
             }
         );
-
-        res.json({
-            contact: contactUpdateResp.data,
-            deal: dealCreateResp.data,
-            message: 'Project role updated and deal created/associated successfully.'
-        });
-
-
+        return response.data.results.at(-1)?.engagement.ownerId ?? null;
     } catch (error) {
-        console.error(error);
-        res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+        console.error('Error fetching hubspot_owner_id:', error.response?.data || error.message);
+        return null;
     }
+}
+  
+// Update existing contact and create deal
+async function updateContactAndCreateDeal(contactId, variables, from, preferred_appointment_start_time, project_type) {
+    // 1. Update contact
+    const contactUpdateResp = await axios.patch(
+        `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
+        {
+        properties: {
+            project_role__sales_rep: variables.userRoleValue,
+            phone: from,
+            address: variables.Location
+        }
+        },
+        {
+        headers: {
+            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+            'Content-Type': 'application/json'
+        }
+        }
+    );
+
+    // 2. Get ownerId for deal assignment (your existing logic)
+    const OwnerId = await getMeetingHostId(contactId);
+
+    // 3. Create deal associated with existing contact
+    const dealPayload = {
+        properties: {
+        dealname: "AI Voice Agent - " + from,
+        pipeline: "default",
+        dealstage: "contractsent",
+        appointment_set_: preferred_appointment_start_time,
+        customer_success_manager: OwnerId,
+        project_type: project_type
+        },
+        associations: [
+        {
+            to: { id: contactId },
+            types: [
+            {
+                associationCategory: "HUBSPOT_DEFINED",
+                associationTypeId: 3
+            }
+            ]
+        }
+        ]
+    };
+
+    const dealCreateResp = await axios.post(
+        'https://api.hubapi.com/crm/v3/objects/deals',
+        dealPayload,
+        {
+        headers: {
+            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+            'Content-Type': 'application/json'
+        }
+        }
+    );
+
+    return { contact: contactUpdateResp.data, deal: dealCreateResp.data };
+}
+  
+  // Main webhook handler
+exports.webhookTest = async (req, res) => {
+try {
+    const {
+    Name,
+    Email,
+    Location,
+    userRoleValue,
+    preferred_appointment_start_time,
+    contactId,
+    project_type
+    } = req.body.variables;
+
+    const { from } = req.body;
+
+    let result;
+
+    if (!contactId) {
+    // Contact not present, create new contact and deal
+    result = await createOrUpdateContactAndDeal(
+        { Name, Email, Location, userRoleValue },
+        from,
+        preferred_appointment_start_time,
+        project_type
+    );
+    } else {
+    // Contact exists, update and create deal
+    result = await updateContactAndCreateDeal(
+        contactId,
+        { Name, Email, Location, userRoleValue },
+        from,
+        preferred_appointment_start_time,
+        project_type
+    );
+    }
+
+    res.json({
+    contact: result.contact,
+    deal: result.deal,
+    message: 'Contact and deal processed successfully.'
+    });
+
+} catch (error) {
+    console.error(error);
+    res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+}
 };
