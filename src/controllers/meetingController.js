@@ -205,10 +205,10 @@ exports.updateContactAndCreateDeal = async (req, res) => {
 
         const {
             contactId,
-            project_role__sales_rep,         // e.g. "Homeowner", "Designer", etc.
-            phone,           // e.g. "New Project Deal"
-            address,
-            appointment_set_,     // e.g. "2025-05-20" (YYYY-MM-DD)
+            Location, 
+            userRoleValue, 
+            phone,         // e.g. "New Project Deal"
+            preferred_appointment_start_time,     // e.g. "2025-05-20" (YYYY-MM-DD)
             project_type
         } = req.body;
 
@@ -222,9 +222,9 @@ exports.updateContactAndCreateDeal = async (req, res) => {
             `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
             {
                 properties: {
-                    project_role__sales_rep: project_role__sales_rep, // Use the exact internal name of your property
+                    project_role__sales_rep: userRoleValue, // Use the exact internal name of your property
                     phone: phone,
-                    address: address
+                    address: Location
                 }
             },
             {
@@ -244,7 +244,7 @@ exports.updateContactAndCreateDeal = async (req, res) => {
                 dealname: "AI Voice Agent - " + phone,
                 pipeline: "default",             // Replace with your pipeline ID if different
                 dealstage: "contractsent", // Replace with your actual stage ID
-                appointment_set_: appointment_set_, // Use the internal name of your property
+                appointment_set_: preferred_appointment_start_time, // Use the internal name of your property
                 customer_success_manager: OwnerId,
                 project_type: project_type
             },
@@ -326,10 +326,12 @@ exports.getSlug = async (req, res) => {
 
 exports.webhookTest = async (req, res) => {
     try {
-        let webhook = req.body;
-        console.log("webhook: ", webhook);
+        let {Name, Email, Location, userRoleValue, project_type} = req.body.variables;
+        let {summary, from} = req.body
+
+        console.log("webhook: ", {Name, Email, Location});
         
-        return res.json({ webhook });
+        return res.json( {Name, Email, userRoleValue, from, project_type, Location, summary} )
 
     } catch (error) {
         console.error(error);
