@@ -7,9 +7,8 @@ router.get('/availability', meetingController.getAvailability);
 router.post('/book', meetingController.bookMeeting);
 router.get('/links', meetingController.getAllMeetingLinks);
 router.post('/generate-slug', meetingController.getSlug);
-router.post('/update-contact', meetingController.updateProjectRoleAndCreateDeal);
+router.post('/update-contact', meetingController.updateContactAndCreateDeal);
 router.post('/webhook', meetingController.webhookTest);
-
 
 
 

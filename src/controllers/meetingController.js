@@ -47,19 +47,18 @@ async function fetchAvailability(slug, monthoffset) {
     return response.data?.linkAvailability?.linkAvailabilityByDuration?.['900000']?.availabilities || [];
 }
 
-async function getHubspotOwnerId(contactId) {
+async function getMeetingtHostId(contactId) {
     try {
         const response = await axios.get(
-            `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
+            `https://api.hubapi.com/engagements/v1/engagements/associated/contact/${contactId}/paged?limit=10`,
             {
-                params: { properties: 'hubspot_owner_id' },
                 headers: {
                     Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
                     'Content-Type': 'application/json'
                 }
             }
         );
-        return response.data.properties.hubspot_owner_id || null;
+        return response.data.results[0].engagement.ownerId || null;
     } catch (error) {
         console.error('Error fetching hubspot_owner_id:', error.response?.data || error.message);
         return null;
@@ -201,7 +200,7 @@ exports.bookMeeting = async (req, res) => {
     }
 };
 
-exports.updateProjectRoleAndCreateDeal = async (req, res) => {
+exports.updateContactAndCreateDeal = async (req, res) => {
     try {
 
         const {
@@ -213,15 +212,12 @@ exports.updateProjectRoleAndCreateDeal = async (req, res) => {
             project_type
         } = req.body;
 
-        console.log("req.body", req.body);
-        
-
         // Validate input
         if (!contactId || !project_role__sales_rep || !phone || !appointment_set_) {
             return res.status(400).json({ error: 'contactId, projectRole, dealName, and appointmentDate are required.' });
         }
 
-        // 1. Update the contact's project role
+        // 1. Update the contact's project role, phone, and address
         const contactUpdateResp = await axios.patch(
             `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
             {
@@ -239,8 +235,8 @@ exports.updateProjectRoleAndCreateDeal = async (req, res) => {
             }
         );
 
-         // 2. Get HubSpot owner ID for the contact
-         const hubspotOwnerId = await getHubspotOwnerId(contactId);
+        // 2. Get HubSpot owner ID for the contact
+        const OwnerId = await getMeetingtHostId(contactId);
 
         // 3. Create the deal and associate with the contact
         const dealPayload = {
@@ -249,7 +245,7 @@ exports.updateProjectRoleAndCreateDeal = async (req, res) => {
                 pipeline: "default",             // Replace with your pipeline ID if different
                 dealstage: "contractsent", // Replace with your actual stage ID
                 appointment_set_: appointment_set_, // Use the internal name of your property
-                customer_success_manager: hubspotOwnerId,
+                customer_success_manager: OwnerId,
                 project_type: project_type
             },
             associations: [
