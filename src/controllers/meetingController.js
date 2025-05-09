@@ -212,11 +212,6 @@ exports.updateContactAndCreateDeal = async (req, res) => {
             project_type
         } = req.body;
 
-        // Validate input
-        if (!contactId || !project_role__sales_rep || !phone || !appointment_set_) {
-            return res.status(400).json({ error: 'contactId, projectRole, dealName, and appointmentDate are required.' });
-        }
-
         // 1. Update the contact's project role, phone, and address
         const contactUpdateResp = await axios.patch(
             `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
@@ -326,12 +321,83 @@ exports.getSlug = async (req, res) => {
 
 exports.webhookTest = async (req, res) => {
     try {
-        let {Name, Email, Location, userRoleValue, project_type} = req.body.variables;
-        let {summary, from} = req.body
+        let {Name, 
+            Email, 
+            Location, 
+            userRoleValue, 
+            preferred_appointment_start_timem, 
+            contactId, 
+            project_type} = req.body.variables;
 
-        console.log("webhook: ", {Name, Email, Location});
+        let {summary, from} = req.body
         
-        return res.json( {Name, Email, userRoleValue, from, project_type, Location, summary} )
+        let OwnerId;
+        // Validate input
+        if (!contactId) {
+            // Create Contact and store contact ID...
+        } else {
+            // Get HubSpot owner ID for the contact
+            OwnerId = await getMeetingtHostId(contactId);
+        }
+
+        // 1. Update the contact's project role, phone, and address
+        const contactUpdateResp = await axios.patch(
+            `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
+            {
+                properties: {
+                    project_role__sales_rep: userRoleValue, // Use the exact internal name of your property
+                    phone: phone,
+                    address: Location
+                }
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        // 3. Create the deal and associate with the contact
+        const dealPayload = {
+            properties: {
+                dealname: "AI Voice Agent - " + phone,
+                pipeline: "default",             // Replace with your pipeline ID if different
+                dealstage: "contractsent", // Replace with your actual stage ID
+                appointment_set_: preferred_appointment_start_time, // Use the internal name of your property
+                customer_success_manager: OwnerId,
+                project_type: project_type
+            },
+            associations: [
+                {
+                    to: { id: contactId },
+                    types: [
+                        {
+                            associationCategory: "HUBSPOT_DEFINED",
+                            associationTypeId: 3 // Contact-to-deal association
+                        }
+                    ]
+                }
+            ]
+        };
+
+        const dealCreateResp = await axios.post(
+            'https://api.hubapi.com/crm/v3/objects/deals',
+            dealPayload,
+            {
+                headers: {
+                    Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        res.json({
+            contact: contactUpdateResp.data,
+            deal: dealCreateResp.data,
+            message: 'Project role updated and deal created/associated successfully.'
+        });
+
 
     } catch (error) {
         console.error(error);
