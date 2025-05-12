@@ -273,63 +273,65 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
     // 1. Search for contact by email
     let contactId = null;
     let contactResp = null;
+    
+    console.log("Variables: ", variables.Email);
+    
+    // try {
+    //   const searchResp = await axios.post(
+    //     'https://api.hubapi.com/crm/v3/objects/contacts/search',
+    //     {
+    //       filterGroups: [{
+    //         filters: [{
+    //           propertyName: 'email',
+    //           operator: 'EQ',
+    //           value: variables.Email
+    //         }]
+    //       }],
+    //       properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
+    //     },
+    //     {
+    //       headers: {
+    //         Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+    //         'Content-Type': 'application/json'
+    //       }
+    //     }
+    //   );
   
-    try {
-      const searchResp = await axios.post(
-        'https://api.hubapi.com/crm/v3/objects/contacts/search',
-        {
-          filterGroups: [{
-            filters: [{
-              propertyName: 'email',
-              operator: 'EQ',
-              value: variables.Email
-            }]
-          }],
-          properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-  
-      if (searchResp.data.results && searchResp.data.results.length > 0) {
-        // Contact exists, update it
-        contactId = searchResp.data.results[0].id;
-        contactResp = await axios.patch(
-          `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
-          {
-            properties: {
-              firstname: variables.Name,
-              phone: from,
-              address: variables.Location,
-              project_role__sales_rep: variables.userRoleValue,
-            }
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-      }
-    } catch (err) {
-      // If error is not "not found", throw
-      if (err.response && err.response.status !== 404) {
-        throw err;
-      }
-    }
+    //   if (searchResp.data.results && searchResp.data.results.length > 0) {
+    //     // Contact exists, update it
+    //     contactId = searchResp.data.results[0].id;
+    //     contactResp = await axios.patch(
+    //       `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
+    //       {
+    //         properties: {
+    //           firstname: variables.Name,
+    //           phone: from,
+    //           address: variables.Location,
+    //           project_role__sales_rep: variables.userRoleValue,
+    //         }
+    //       },
+    //       {
+    //         headers: {
+    //           Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+    //           'Content-Type': 'application/json'
+    //         }
+    //       }
+    //     );
+    //   }
+    // } catch (err) {
+    //   // If error is not "not found", throw
+    //   if (err.response && err.response.status !== 404) {
+    //     throw err;
+    //   }
+    // }
   
     // If contact does not exist, create it
-    if (!contactId) {
+    // if (!contactId) {
       contactResp = await axios.post(
         'https://api.hubapi.com/crm/v3/objects/contacts',
         {
           properties: {
-            firstname: variables.Name,
+            firstname: variables.Name || from,
             email: variables.Email,
             phone: from,
             address: variables.Location,
@@ -344,16 +346,16 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
         }
       );
       contactId = contactResp.data.id;
-    }
+    // }
   
     // 2. Create deal associated with the contact
     const dealPayload = {
       properties: {
         dealname: "AI Voice Agent - " + from,
         pipeline: "default",
-        dealstage: "appointmentscheduled",
+        dealstage: "appointmentscheduled", //Raw Lead
         appointment_set_: preferred_appointment_start_time,
-        customer_success_manager: "", // Assign owner if needed
+        customer_success_manager: "", // meeting not scheduled
         project_type: project_type
       },
       associations: [
@@ -477,6 +479,9 @@ try {
 
     const { from } = req.body;
 
+    console.log(req.body.variables);
+    
+
     let result;
 
     if (!contactId) {
@@ -505,7 +510,6 @@ try {
     });
 
 } catch (error) {
-    console.error(error);
     res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
 }
 };
