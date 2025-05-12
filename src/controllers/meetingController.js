@@ -275,58 +275,6 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
     let contactResp = null;
     
     console.log("Variables: ", variables.Email);
-    
-    // try {
-    //   const searchResp = await axios.post(
-    //     'https://api.hubapi.com/crm/v3/objects/contacts/search',
-    //     {
-    //       filterGroups: [{
-    //         filters: [{
-    //           propertyName: 'email',
-    //           operator: 'EQ',
-    //           value: variables.Email
-    //         }]
-    //       }],
-    //       properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
-    //     },
-    //     {
-    //       headers: {
-    //         Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-    //         'Content-Type': 'application/json'
-    //       }
-    //     }
-    //   );
-  
-    //   if (searchResp.data.results && searchResp.data.results.length > 0) {
-    //     // Contact exists, update it
-    //     contactId = searchResp.data.results[0].id;
-    //     contactResp = await axios.patch(
-    //       `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
-    //       {
-    //         properties: {
-    //           firstname: variables.Name,
-    //           phone: from,
-    //           address: variables.Location,
-    //           project_role__sales_rep: variables.userRoleValue,
-    //         }
-    //       },
-    //       {
-    //         headers: {
-    //           Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-    //           'Content-Type': 'application/json'
-    //         }
-    //       }
-    //     );
-    //   }
-    // } catch (err) {
-    //   // If error is not "not found", throw
-    //   if (err.response && err.response.status !== 404) {
-    //     throw err;
-    //   }
-    // }
-  
-    // If contact does not exist, create it
-    // if (!contactId) {
       contactResp = await axios.post(
         'https://api.hubapi.com/crm/v3/objects/contacts',
         {
@@ -346,8 +294,6 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
         }
       );
       contactId = contactResp.data.id;
-    // }
-  
     // 2. Create deal associated with the contact
     const dealPayload = {
       properties: {
@@ -463,6 +409,42 @@ async function updateContactAndCreateDeal(contactId, variables, from, preferred_
 
     return { contact: contactUpdateResp.data, deal: dealCreateResp.data };
 }
+
+async function createNoteForContact(contactId, noteContent) {
+    const notePayload = {
+      engagement: {
+        active: true,
+        type: "NOTE"
+      },
+      associations: {
+        contactIds: [contactId],
+        companyIds: [],
+        dealIds: [],
+        ownerIds: []
+      },
+      metadata: {
+        body: noteContent
+      }
+    };
+  
+    try {
+      const response = await axios.post(
+        'https://api.hubapi.com/engagements/v1/engagements',
+        notePayload,
+        {
+          headers: {
+            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error creating note:', error.response?.data || error.message);
+      throw error;
+    }
+  }
+  
   
   // Main webhook handler
 exports.webhookTest = async (req, res) => {
@@ -477,7 +459,7 @@ try {
     project_type
     } = req.body.variables;
 
-    const { from } = req.body;
+    const { from, summary} = req.body;
 
     console.log(req.body.variables);
     
@@ -502,6 +484,11 @@ try {
         project_type
     );
     }
+
+    // Create note for the contact using summary
+    if (summary && result.contact?.id) {
+        await createNoteForContact(result.contact.id, summary);
+        }
 
     res.json({
     contact: result.contact,
