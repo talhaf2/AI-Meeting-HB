@@ -307,7 +307,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
     //     {
     //       filterGroups: [{
     //         filters: [{
-    //           propertyName: 'firstname',
+    //           propertyName: 'phone',
     //           operator: 'EQ',
     //           value: from  // if phone number already there in contact means contact exsit
     //         }]
@@ -322,6 +322,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
     //     }
     //   );
     // }
+
 if (variables.Email !== undefined){
     const searchResp = await axios.post(
       'https://api.hubapi.com/crm/v3/objects/contacts/search',
@@ -614,7 +615,7 @@ exports.webhookTest = async (req, res) => {
       let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
       https://prostructengineering.com/schedule-consultation/`
 
-      // await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
 
     } else {
       // Contact exists, update and create deal
@@ -633,8 +634,8 @@ exports.webhookTest = async (req, res) => {
     }
 
     console.log({
-      contact: result.contact,
-      deal: result.deal,
+      contact: result.contact.id,
+      deal: result.deal.id,
       message: 'Contact and deal processed successfully.'
     });
 
