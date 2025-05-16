@@ -558,17 +558,18 @@ try {
     let result;
 
     if (!contactId) {
-      let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
-                  https://prostructengineering.com/schedule-consultation/`
-      
-    await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-    // Contact not present, create new contact and deal
+     // Contact not present, create new contact and deal
     result = await createOrUpdateContactAndDeal(
         { Name, Email, Location, userRoleValue },
         from,
         preferred_appointment_start_time,
         project_type
     );
+    let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
+    https://prostructengineering.com/schedule-consultation/`
+
+    await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+
     } else {
     // Contact exists, update and create deal
     result = await updateContactAndCreateDeal(
