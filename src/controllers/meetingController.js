@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { DateTime } = require('luxon');
 const { sendEmail } = require('../utils/email');
+const twilio = require('twilio')
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Los_Angeles'; // Pacific Time
@@ -499,6 +500,29 @@ async function createNoteForContact(contactId, noteContent) {
     }
   }
 
+  async function sendTwilioSMS(to, body, from, accountSid, authToken) {
+    // Import the twilio module inside the function
+  
+    // Create a client with the provided credentials
+    const client = twilio(accountSid, authToken);
+  
+    // Return the promise directly
+    return client.messages
+      .create({
+        body: body,
+        to: to,
+        from: from,
+      })
+      .then((message) => {
+        console.log(`Message sent successfully! SID: ${message.sid}`);
+        return message;
+      })
+      .catch((error) => {
+        console.error("Error sending message:", error);
+        throw error;
+      });
+  }
+
   // Main webhook handler
 exports.webhookTest = async (req, res) => {
 try {
@@ -509,7 +533,8 @@ try {
     userRoleValue,
     preferred_appointment_start_time,
     contactId,
-    project_type
+    project_type,
+    existing_project
     } = req.body.variables;
 
     const { from, summary } = req.body;
@@ -533,6 +558,10 @@ try {
     let result;
 
     if (!contactId) {
+      let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
+                  https://prostructengineering.com/schedule-consultation/`
+      
+    await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
     // Contact not present, create new contact and deal
     result = await createOrUpdateContactAndDeal(
         { Name, Email, Location, userRoleValue },
@@ -587,8 +616,8 @@ exports.notifyPMExistingClient = async (req, res) => {
       Object.entries(fields).map(([key, value]) => `${key}: ${value}`).join('\n');
 
     await sendEmail({
-      // to: 'projects@prostructengineering.us',
-      to: 'talha.kh58@gmail.com',
+      to: 'projects@prostructengineering.us',
+      // to: 'talha.kh58@gmail.com',
       subject,
       text,
       html,
