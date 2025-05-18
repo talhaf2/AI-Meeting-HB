@@ -618,8 +618,13 @@ exports.webhookTest = async (req, res) => {
         console.log("Email not gatehered");
         await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       }
-      return
+      return res.json({
+        contact: '',
+        deal: '',
+        message: 'Exsiting Project workFlow, Sent emal to PM'
+      })
     }
+    
     if (talkTohuman){
       console.log("Notifiying PM");
       let subject = `[For PM] Client requested to talk with human.`
@@ -633,6 +638,7 @@ exports.webhookTest = async (req, res) => {
     let result;
 
     if (!contactId) {
+
       
       // Contact not present, create new contact and deal
       result = await createOrUpdateContactAndDeal(
@@ -641,9 +647,14 @@ exports.webhookTest = async (req, res) => {
         preferred_appointment_start_time,
         project_type
       );
+
+      console.log(result.contact.id);
       
-      if(!talkTohuman)
+      
+      if(!talkTohuman){
+        console.log("Meeting Not scheduled, created contact and sending mesaage to user. ");
         await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      }
 
     } else {
       // Contact exists, update and create deal
@@ -698,8 +709,8 @@ exports.notifyPMExistingClient = async (req, res) => {
       Object.entries(fields).map(([key, value]) => `${key}: ${value}`).join('\n');
 
     await sendEmail({
-      // to: 'projects@prostructengineering.us',
-      to: 'talha.kh58@gmail.com',
+      to: process.env.TO,
+      // to: 'talha.kh58@gmail.com',
       subject,
       text,
       html,
