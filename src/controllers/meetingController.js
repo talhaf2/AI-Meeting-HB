@@ -276,52 +276,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
   let contactId = null;
   let contactResp = null;
 
-  console.log("Variables: ", variables.Email);
-
   try {
-    // let searchResp;
-    // if (variables.Email !== undefined) {
-    //   searchResp = await axios.post(
-    //     'https://api.hubapi.com/crm/v3/objects/contacts/search',
-    //     {
-    //       filterGroups: [{
-    //         filters: [{
-    //           propertyName: 'email',
-    //           operator: 'EQ',
-    //           value: variables.Email
-    //         }]
-    //       }],
-    //       properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
-    //     },
-    //     {
-    //       headers: {
-    //         Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-    //         'Content-Type': 'application/json'
-    //       }
-    //     }
-    //   )
-    // }
-    // else {
-    //   searchResp = await axios.post(
-    //     'https://api.hubapi.com/crm/v3/objects/contacts/search',
-    //     {
-    //       filterGroups: [{
-    //         filters: [{
-    //           propertyName: 'phone',
-    //           operator: 'EQ',
-    //           value: from  // if phone number already there in contact means contact exsit
-    //         }]
-    //       }],
-    //       properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
-    //     },
-    //     {
-    //       headers: {
-    //         Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-    //         'Content-Type': 'application/json'
-    //       }
-    //     }
-    //   );
-    // }
 
 if (variables.Email !== undefined){
     const searchResp = await axios.post(
@@ -552,6 +507,8 @@ async function sendTwilioSMS(to, body, from, accountSid, authToken) {
   // Create a client with the provided credentials
   const client = twilio(accountSid, authToken);
 
+  console.log(`Message sent successfully!`);
+
   // Return the promise directly
   return client.messages
     .create({
@@ -569,6 +526,56 @@ async function sendTwilioSMS(to, body, from, accountSid, authToken) {
     });
 }
 
+async function notifyPMbyEmail(subject, Name, Email, from, Location ) {
+  try {
+
+    if (Email) subject += ` - ${Email}`;
+
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Determine if we have any user info
+    const hasDetails = Name || Email || Location || from;
+
+    let html = `<p><b>Details we fetched from the call: </b></p><p>${time}</p>`;
+    let textParts = [`NEW`, `Time: ${time}`];
+
+    if (hasDetails) {
+      if (Name) {
+        html += `<p><b>Name:</b> ${Name}</p>`;
+        textParts.push(`Name: ${Name}`);
+      }
+      if (Location) {
+        html += `<p><b>Location:</b> ${Location}</p>`;
+        textParts.push(`Location: ${Location}`);
+      }
+      if (from) {
+        html += `<p><b>From:</b> ${from}</p>`;
+        textParts.push(`From: ${from}`);
+      }
+      if (Email) {
+        html += `<p><b>Email:</b> ${Email}</p>`;
+        textParts.push(`Email: ${Email}`);
+      }
+    } else {
+      html += `<p><i>We were unable to get any details.</i></p>`;
+      textParts.push(`We were unable to get any details.`);
+    }
+
+    const text = textParts.join('\n');
+
+    await sendEmail({
+      to: 'talha.kh58@gmail.com',
+      subject,
+      text,
+      html,
+    });
+
+    console.log('Notification email sent to PM.');
+  } catch (error) {
+    console.error('Error sending PM notification:', error);
+  }
+}
+
 // Main webhook handler
 exports.webhookTest = async (req, res) => {
   try {
@@ -580,7 +587,8 @@ exports.webhookTest = async (req, res) => {
       preferred_appointment_start_time,
       contactId,
       project_type,
-      existing_project
+      existing_project,
+      talkTohuman
     } = req.body.variables;
 
     const { from, summary } = req.body;
@@ -593,17 +601,39 @@ exports.webhookTest = async (req, res) => {
       preferred_appointment_start_time,
       contactId,
       project_type,
-      existing_project
+      existing_project,
+      talkTohuman
     });
+
+     let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
+      https://prostructengineering.com/schedule-consultation/`
 
     console.log({ from, summary });
 
     if (existing_project) {
+      console.log("Notifiying PM");
+      let subject = `[For PM] Existing Client reached out on the main line`
+      notifyPMbyEmail(subject, Name, Email, from, Location )
+      if(Email === undefined){
+        console.log("Email not gatehered");
+        await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      }
       return
     }
+    if (talkTohuman){
+      console.log("Notifiying PM");
+      let subject = `[For PM] Client requested to talk with human.`
+      notifyPMbyEmail(subject, Name, Email, from)
+      if(Email === undefined){
+        console.log("Email not gatehered");
+        await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      }
+    }
+
     let result;
 
     if (!contactId) {
+      
       // Contact not present, create new contact and deal
       result = await createOrUpdateContactAndDeal(
         { Name, Email, Location, userRoleValue },
@@ -611,11 +641,9 @@ exports.webhookTest = async (req, res) => {
         preferred_appointment_start_time,
         project_type
       );
-
-      let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
-      https://prostructengineering.com/schedule-consultation/`
-
-      await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      
+      if(!talkTohuman)
+        await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
 
     } else {
       // Contact exists, update and create deal
@@ -670,8 +698,8 @@ exports.notifyPMExistingClient = async (req, res) => {
       Object.entries(fields).map(([key, value]) => `${key}: ${value}`).join('\n');
 
     await sendEmail({
-      to: 'projects@prostructengineering.us',
-      // to: 'talha.kh58@gmail.com',
+      // to: 'projects@prostructengineering.us',
+      to: 'talha.kh58@gmail.com',
       subject,
       text,
       html,
