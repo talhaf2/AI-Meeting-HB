@@ -13,9 +13,14 @@ function msToPacificISO(ms) {
 
 // Helper function to get meeting link slug based on role and intent
 const getSlugFromSelection = (role, intent) => {
-  // Clean and convert to numbers
+  // Default intent to 2 if null, undefined, or empty string
+  const safeIntent = intent == null || intent === '' ? 2 : intent;
+
   const parsedRole = Number(String(role).trim());
-  const parsedIntent = Number(String(intent).trim());
+  const parsedIntent = Number(String(safeIntent).trim());
+
+  // Role // 0 Homeowner, 1 AEC, 2 Realtor/Property Manager
+  // Intent // 0 Structural inspection, 1 Need Qoute, 2 don't have plans (Others queries)
 
   if (parsedRole === 1) {
     return 'tfarooq/aec-professional';
@@ -28,6 +33,12 @@ const getSlugFromSelection = (role, intent) => {
   }
   if (parsedRole === 0 && parsedIntent === 2) {
     return 'tfarooq/homeowner-other';
+  }
+  if (parsedRole === 2 && parsedIntent === 0) {
+    return 'tfarooq/homeowner';
+  }
+  if (parsedRole === 2) {
+    return 'tfarooq/aec-professional';
   }
 
 };
@@ -47,7 +58,6 @@ async function fetchAvailability(slug, monthoffset) {
   });
   return response.data?.linkAvailability?.linkAvailabilityByDuration?.['900000']?.availabilities || [];
 }
-
 
 
 exports.getAvailability = async (req, res) => {
@@ -278,27 +288,27 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
 
   try {
 
-if (variables.Email !== undefined){
-    const searchResp = await axios.post(
-      'https://api.hubapi.com/crm/v3/objects/contacts/search',
-      {
-        filterGroups: [{
-          filters: [{
-            propertyName: 'email',
-            operator: 'EQ',
-            value: variables.Email
-          }]
-        }],
-        properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-          'Content-Type': 'application/json'
+    if (variables.Email !== undefined) {
+      const searchResp = await axios.post(
+        'https://api.hubapi.com/crm/v3/objects/contacts/search',
+        {
+          filterGroups: [{
+            filters: [{
+              propertyName: 'email',
+              operator: 'EQ',
+              value: variables.Email
+            }]
+          }],
+          properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
         }
-      }
-    )
-  }
+      )
+    }
 
     if (searchResp.data.results && searchResp.data.results.length > 0) {
       // Contact exists, update it
@@ -526,7 +536,7 @@ async function sendTwilioSMS(to, body, from, accountSid, authToken) {
     });
 }
 
-async function notifyPMbyEmail(subject, Name, Email, from, Location ) {
+async function notifyPMbyEmail(subject, Name, Email, from, Location) {
   try {
 
     if (Email) subject += ` - ${Email}`;
@@ -605,7 +615,7 @@ exports.webhookTest = async (req, res) => {
       talkTohuman
     });
 
-     let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
+    let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
       https://prostructengineering.com/schedule-consultation/`
 
     console.log({ from, summary });
@@ -613,8 +623,8 @@ exports.webhookTest = async (req, res) => {
     if (existing_project) {
       console.log("Notifiying PM");
       let subject = `[For PM] Existing Client reached out on the main line`
-      notifyPMbyEmail(subject, Name, Email, from, Location )
-      if(Email === undefined){
+      notifyPMbyEmail(subject, Name, Email, from, Location)
+      if (Email === undefined) {
         console.log("Email not gatehered");
         await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       }
@@ -624,12 +634,12 @@ exports.webhookTest = async (req, res) => {
         message: 'Exsiting Project workFlow, Sent emal to PM'
       })
     }
-    
-    if (talkTohuman){
+
+    if (talkTohuman) {
       console.log("Notifiying PM");
       let subject = `[For PM] Client requested to talk with human.`
       notifyPMbyEmail(subject, Name, Email, from)
-      if(Email === undefined){
+      if (Email === undefined) {
         console.log("Email not gatehered");
         await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       }
@@ -639,7 +649,7 @@ exports.webhookTest = async (req, res) => {
 
     if (!contactId) {
 
-      
+
       // Contact not present, create new contact and deal
       result = await createOrUpdateContactAndDeal(
         { Name, Email, Location, userRoleValue },
@@ -649,9 +659,9 @@ exports.webhookTest = async (req, res) => {
       );
 
       console.log(result.contact.id);
-      
-      
-      if(!talkTohuman){
+
+
+      if (!talkTohuman) {
         console.log("Meeting Not scheduled, created contact and sending mesaage to user. ");
         await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       }
