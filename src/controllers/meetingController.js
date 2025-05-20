@@ -202,8 +202,10 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
   let contactResp = null;
 
   try {
-
-      const searchResp = await axios.post(
+    let searchResp;
+    if(variables.Email !== undefined){
+      searchResp = await axios.post(
+  
         'https://api.hubapi.com/crm/v3/objects/contacts/search',
         {
           filterGroups: [{
@@ -222,7 +224,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
           }
         }
       )
-    
+    }
 
     if (searchResp.data.results && searchResp.data.results.length > 0) {
       // Contact exists, update it
