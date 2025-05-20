@@ -1,7 +1,8 @@
 const axios = require('axios');
 const { DateTime } = require('luxon');
 const { sendEmail } = require('../utils/email');
-const twilio = require('twilio')
+const twilio = require('twilio');
+const { json } = require('express');
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Los_Angeles'; // Pacific Time
@@ -128,9 +129,8 @@ exports.bookMeeting = async (req, res) => {
       firstName,
       lastName,
       email,
-      projDesc,
-      issue,
-      ProjLoc,
+      Issue,
+      Location,
       phone
     } = req.body;
 
@@ -174,7 +174,7 @@ exports.bookMeeting = async (req, res) => {
         },
         {
           name: "Please provide any details to help prepare for our meeting, such as the site address.",
-          value: issue + " and the project location is: " + ProjLoc
+          value: Issue + " and the project location is: " + Location
         }
       ]
     };
@@ -194,101 +194,15 @@ exports.bookMeeting = async (req, res) => {
   }
 };
 
-exports.updateContactAndCreateDeal = async (req, res) => {
-  try {
-
-    const {
-      contactId,
-      Location,
-      userRoleValue,
-      phone,         // e.g. "New Project Deal"
-      preferred_appointment_start_time,     // e.g. "2025-05-20" (YYYY-MM-DD)
-      project_type
-    } = req.body;
-
-    // 1. Update the contact's project role, phone, and address
-    const contactUpdateResp = await axios.patch(
-      `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
-      {
-        properties: {
-          project_role__sales_rep: userRoleValue, // Use the exact internal name of your property
-          phone: phone,
-          address: Location
-        }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    // 2. Get HubSpot owner ID for the contact
-    const OwnerId = await getMeetingtHostId(contactId);
-
-    console.log(OwnerId);
-
-
-    // 3. Create the deal and associate with the contact
-    const dealPayload = {
-      properties: {
-        dealname: "AI Voice Agent - " + phone,
-        pipeline: "default",             // Replace with your pipeline ID if different
-        dealstage: "contractsent", // Replace with your actual stage ID
-        appointment_set_: preferred_appointment_start_time, // Use the internal name of your property
-        customer_success_manager: OwnerId,
-        project_type: project_type
-      },
-      associations: [
-        {
-          to: { id: contactId },
-          types: [
-            {
-              associationCategory: "HUBSPOT_DEFINED",
-              associationTypeId: 3 // Contact-to-deal association
-            }
-          ]
-        }
-      ]
-    };
-
-    const dealCreateResp = await axios.post(
-      'https://api.hubapi.com/crm/v3/objects/deals',
-      dealPayload,
-      {
-        headers: {
-          Authorization: `Bearer ${process.env.HUBSPOT_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    res.json({
-      contact: contactUpdateResp.data,
-      deal: dealCreateResp.data,
-      message: 'Project role updated and deal created/associated successfully.'
-    });
-
-  } catch (error) {
-    console.error('HubSpot error:', error.response?.data || error.message);
-    res.status(error.response?.status || 500).json({
-      error: error.response?.data || error.message
-    });
-  }
-};
-
-
 ///WEBHOOK POST CALL FOR LOGGING CONTACT AND DEAL INTO HUBSPOT...
 // Create new contact and deal
-async function createOrUpdateContactAndDeal(variables, from, preferred_appointment_start_time, project_type, accessToken) {
+async function createOrUpdateContactAndDeal(variables, from, preferred_appointment_start_time, project_type, Issue) {
   // 1. Search for contact by email
   let contactId = null;
   let contactResp = null;
 
   try {
 
-    if (variables.Email !== undefined) {
       const searchResp = await axios.post(
         'https://api.hubapi.com/crm/v3/objects/contacts/search',
         {
@@ -308,7 +222,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
           }
         }
       )
-    }
+    
 
     if (searchResp.data.results && searchResp.data.results.length > 0) {
       // Contact exists, update it
@@ -360,6 +274,9 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
     );
     contactId = contactResp.data.id;
   }
+
+  console.log("issue in deal: ", Issue);
+  
   // 2. Create deal associated with the contact
   const dealPayload = {
     properties: {
@@ -368,7 +285,9 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
       dealstage: "appointmentscheduled", //Raw Lead
       appointment_set_: "",
       customer_success_manager: "", // meeting not scheduled
-      project_type: project_type
+      project_type: project_type,
+      deal_address__if_different_from_contact_address_: variables.Location,
+      project_description: Issue
     },
     associations: [
       {
@@ -417,7 +336,7 @@ async function getMeetingHostId(contactId) {
 }
 
 // Update existing contact and create deal
-async function updateContactAndCreateDeal(contactId, variables, from, preferred_appointment_start_time, project_type) {
+async function updateContactAndCreateDeal(contactId, variables, from, preferred_appointment_start_time, project_type, Issue) {
   // 1. Update contact
   const contactUpdateResp = await axios.patch(
     `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
@@ -439,6 +358,9 @@ async function updateContactAndCreateDeal(contactId, variables, from, preferred_
   // 2. Get ownerId for deal assignment (your existing logic)
   const OwnerId = await getMeetingHostId(contactId);
 
+  console.log("issue in deal, meeting was scheduled: ", Issue);
+  
+
   // 3. Create deal associated with existing contact
   const dealPayload = {
     properties: {
@@ -447,7 +369,9 @@ async function updateContactAndCreateDeal(contactId, variables, from, preferred_
       dealstage: "contractsent",
       appointment_set_: preferred_appointment_start_time,
       customer_success_manager: OwnerId,
-      project_type: project_type
+      project_type: project_type,
+      deal_address__if_different_from_contact_address_: variables.Location,
+      project_description: Issue 
     },
     associations: [
       {
@@ -476,7 +400,7 @@ async function updateContactAndCreateDeal(contactId, variables, from, preferred_
   return { contact: contactUpdateResp.data, deal: dealCreateResp.data };
 }
 
-async function createNoteForContact(contactId, noteContent) {
+async function createNoteForContact(contactId, noteContent, recording_url) {
   const notePayload = {
     engagement: {
       active: true,
@@ -489,7 +413,7 @@ async function createNoteForContact(contactId, noteContent) {
       ownerIds: []
     },
     metadata: {
-      body: noteContent
+      body: noteContent + " \n\n You can also view the recording at: " + recording_url
     }
   };
 
@@ -520,20 +444,20 @@ async function sendTwilioSMS(to, body, from, accountSid, authToken) {
   console.log(`Message sent successfully!`);
 
   // Return the promise directly
-  return client.messages
-    .create({
-      body: body,
-      to: to,
-      from: from,
-    })
-    .then((message) => {
-      console.log(`Message sent successfully! SID: ${message.sid}`);
-      return message;
-    })
-    .catch((error) => {
-      console.error("Error sending message:", error);
-      throw error;
-    });
+  // return client.messages
+  //   .create({
+  //     body: body,
+  //     to: to,
+  //     from: from,
+  //   })
+  //   .then((message) => {
+  //     console.log(`Message sent successfully! SID: ${message.sid}`);
+  //     return message;
+  //   })
+  //   .catch((error) => {
+  //     console.error("Error sending message:", error);
+  //     throw error;
+  //   });
 }
 
 async function notifyPMbyEmail(subject, Name, Email, from, Location) {
@@ -598,10 +522,14 @@ exports.webhookTest = async (req, res) => {
       contactId,
       project_type,
       existing_project,
-      talkTohuman
+      talkToHuman,
+      incorrectEmail,
+      Issue
+      
+  
     } = req.body.variables;
 
-    const { from, summary } = req.body;
+    const { from, summary, recording_url} = req.body;
 
     console.log({
       Name,
@@ -612,13 +540,22 @@ exports.webhookTest = async (req, res) => {
       contactId,
       project_type,
       existing_project,
-      talkTohuman
+      talkToHuman,
+      incorrectEmail,
+      Issue
+      
     });
+
+    console.log({ from, summary, recording_url});
 
     let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
       https://prostructengineering.com/schedule-consultation/`
 
-    console.log({ from, summary });
+      let bodyWhenIncorrectEmail = `Hi,
+      We're sorry but the appointment was not booked as the email provided was incorrect. Please use the link below to schedule a free consultation:
+      https://prostructengineering.com/schedule-consultation/`
+
+   
 
     if (existing_project) {
       console.log("Notifiying PM");
@@ -635,10 +572,11 @@ exports.webhookTest = async (req, res) => {
       })
     }
 
-    if (talkTohuman) {
+    if (talkToHuman) {
       console.log("Notifiying PM");
       let subject = `[For PM] Client requested to talk with human.`
       notifyPMbyEmail(subject, Name, Email, from)
+      //Talk to human path call disconnected before gathering all imformation
       if (Email === undefined) {
         console.log("Email not gatehered");
         await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
@@ -649,19 +587,24 @@ exports.webhookTest = async (req, res) => {
 
     if (!contactId) {
 
-
       // Contact not present, create new contact and deal
       result = await createOrUpdateContactAndDeal(
         { Name, Email, Location, userRoleValue },
         from,
         preferred_appointment_start_time,
-        project_type
+        project_type,
+        Issue
       );
 
       console.log(result.contact.id);
 
-
-      if (!talkTohuman) {
+      //Meeting was not scheduled due to incorrect email address.
+      if (incorrectEmail){
+        console.log("Meeting Not scheduled, created contact and sending mesaage to user for incorrect email. ");
+        await sendTwilioSMS(from, bodyWhenIncorrectEmail, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      }
+      // if talk to human is false and call is disconnected before then message will be sent
+      if (!talkToHuman && !incorrectEmail) { 
         console.log("Meeting Not scheduled, created contact and sending mesaage to user. ");
         await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       }
@@ -670,7 +613,7 @@ exports.webhookTest = async (req, res) => {
       // Contact exists, update and create deal
       result = await updateContactAndCreateDeal(
         contactId,
-        { Name, Email, Location, userRoleValue },
+        { Name, Email, Location, userRoleValue, Issue },
         from,
         preferred_appointment_start_time,
         project_type
@@ -679,7 +622,7 @@ exports.webhookTest = async (req, res) => {
 
     // Create note for the contact using summary
     if (summary && result.contact?.id) {
-      await createNoteForContact(result.contact.id, summary);
+      await createNoteForContact(result.contact.id, summary, recording_url);
     }
 
     console.log({
