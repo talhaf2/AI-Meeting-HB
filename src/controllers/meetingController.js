@@ -444,20 +444,20 @@ async function sendTwilioSMS(to, body, from, accountSid, authToken) {
   console.log(`Message sent successfully!`);
 
   // Return the promise directly
-  // return client.messages
-  //   .create({
-  //     body: body,
-  //     to: to,
-  //     from: from,
-  //   })
-  //   .then((message) => {
-  //     console.log(`Message sent successfully! SID: ${message.sid}`);
-  //     return message;
-  //   })
-  //   .catch((error) => {
-  //     console.error("Error sending message:", error);
-  //     throw error;
-  //   });
+  return client.messages
+    .create({
+      body: body,
+      to: to,
+      from: from,
+    })
+    .then((message) => {
+      console.log(`Message sent successfully! SID: ${message.sid}`);
+      return message;
+    })
+    .catch((error) => {
+      console.error("Error sending message:", error);
+      throw error;
+    });
 }
 
 async function notifyPMbyEmail(subject, Name, Email, from, Location) {
