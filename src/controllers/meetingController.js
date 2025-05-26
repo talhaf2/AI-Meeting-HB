@@ -589,6 +589,18 @@ exports.webhookTest = async (req, res) => {
 
     if (!contactId) {
 
+      //Meeting was not scheduled due to incorrect email address.
+      if (incorrectEmail){
+        console.log("Meeting Not scheduled, created contact and sending mesaage to user for incorrect email. ");
+        await sendTwilioSMS(from, bodyWhenIncorrectEmail, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      }
+
+      // if talk to human is false and call is disconnected before then message will be sent
+      if (!talkToHuman && !incorrectEmail) { 
+        console.log("Meeting Not scheduled, created contact and sending mesaage to user. ");
+        await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      }
+
       // Contact not present, create new contact and deal
       result = await createOrUpdateContactAndDeal(
         { Name, Email, Location, userRoleValue },
@@ -599,17 +611,6 @@ exports.webhookTest = async (req, res) => {
       );
 
       console.log(result.contact.id);
-
-      //Meeting was not scheduled due to incorrect email address.
-      if (incorrectEmail){
-        console.log("Meeting Not scheduled, created contact and sending mesaage to user for incorrect email. ");
-        await sendTwilioSMS(from, bodyWhenIncorrectEmail, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-      }
-      // if talk to human is false and call is disconnected before then message will be sent
-      if (!talkToHuman && !incorrectEmail) { 
-        console.log("Meeting Not scheduled, created contact and sending mesaage to user. ");
-        await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-      }
 
     } else {
       // Contact exists, update and create deal
