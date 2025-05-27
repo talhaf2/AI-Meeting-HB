@@ -555,8 +555,6 @@ exports.webhookTest = async (req, res) => {
     let Name = first_name + " " + last_name
 
     console.log("Name: ", Name);
-
-    return
     
 
     let body = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
