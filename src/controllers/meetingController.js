@@ -626,7 +626,8 @@ exports.webhookTest = async (req, res) => {
         { Name, Email, Location, userRoleValue, Issue },
         from,
         preferred_appointment_start_time,
-        project_type
+        project_type,
+        Issue
       );
     }
 
@@ -649,39 +650,5 @@ exports.webhookTest = async (req, res) => {
 
   } catch (error) {
     res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
-  }
-};
-
-exports.notifyPMExistingClient = async (req, res) => {
-  try {
-    const fields = req.body; // All fields collected by AI Voice Agent
-    const emailId = fields.Email || 'Unknown';
-
-    // Build email body with all collected fields
-    const fieldLines = Object.entries(fields)
-      .map(([key, value]) => `<b>${key}:</b> ${value}`)
-      .join('<br>');
-
-    const subject = `[For PM] Existing Client reached out on the main line - ${emailId}`;
-    const html = `
-      <p><b>NEW</b></p>
-      <p>${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-      <p>${fieldLines}</p>
-    `;
-    const text = `NEW\n${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}\n` +
-      Object.entries(fields).map(([key, value]) => `${key}: ${value}`).join('\n');
-
-    await sendEmail({
-      to: process.env.TO,
-      // to: 'talha.kh58@gmail.com',
-      subject,
-      text,
-      html,
-    });
-
-    res.status(200).json({ message: 'Notification email sent to PM.' });
-  } catch (error) {
-    console.error('Error sending PM notification:', error);
-    res.status(500).json({ error: 'Failed to send notification email.', details: error.message });
   }
 };

@@ -7,7 +7,6 @@ router.get('/availability', meetingController.getAvailability);
 router.post('/book', meetingController.bookMeeting);
 router.post('/webhook', meetingController.webhookTest);
 
-router.post('/sendmail', meetingController.notifyPMExistingClient);
 
 
 
