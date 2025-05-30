@@ -512,6 +512,67 @@ async function notifyPMbyEmail(subject, Name, Email, from, Location) {
   }
 }
 
+
+// canonical list (exact spellings)
+const ALLOWED_PROJECT_TYPES = [
+  'Load Bearing Wall',
+  'Addition',
+  'Remodel',
+  'Foundation',
+  'OSE (Structural)',
+  'ADU',
+  'New Home',
+  'Retaining Wall',
+  'Outdoor Living Space (Decks/Patio)',
+  'T24',
+  'Civil Engineering',
+  'Deck/Patio/Patch',
+  'LBW/R',
+  'Legalization',
+  'New Custom Home',
+  'Retrofit',
+  'Roof',
+  'Special Inspection',
+  'Anchorage',
+  'As-Builts',
+  'Redline and Calcs',
+  '[Upsell] On-Site Construction Admin.',
+  '[CO] Other Construction Admin.',
+  'PM As a Service',
+  'Pool',
+  'Ground Up Construction'
+];
+
+const ALLOWED_USER_ROLES = [
+  'Homeowner',
+  'Architect',
+  'Designer',
+  'Contractor',
+  'Developer',
+  'Realtor/Property Manager',
+  'Others'
+];
+
+/**
+ * Normalizes a string input to a canonical value if it exists in the list.
+ * Returns "" if no match.
+ *
+ * @param {string} input
+ * @param {string[]} allowedList
+ * @returns {string}
+ */
+function normalizeInput(input = '', allowedList) {
+  const text = input.trim().toLowerCase();
+  for (const canonical of allowedList) {
+    if (text === canonical.toLowerCase()) {
+      return canonical; // return exact casing from allowed list
+    }
+  }
+  return ''; // no match
+}
+
+
+
 // Main webhook handler
 exports.webhookTest = async (req, res) => {
   try {
@@ -534,15 +595,20 @@ exports.webhookTest = async (req, res) => {
 
     const { from, summary, recording_url} = req.body;
 
+    const cleanProjectType = normalizeInput(project_type, ALLOWED_PROJECT_TYPES);
+    const cleanUserRole = normalizeInput(userRoleValue, ALLOWED_USER_ROLES);
+
     console.log({
       first_name,
       last_name,
       Email,
       Location,
       userRoleValue,
+      cleanUserRole,
       preferred_appointment_start_time,
       contactId,
       project_type,
+      cleanProjectType,
       existing_project,
       talkToHuman,
       incorrectEmail,
@@ -610,10 +676,10 @@ exports.webhookTest = async (req, res) => {
 
       // Contact not present, create new contact and deal
       result = await createOrUpdateContactAndDeal(
-        { Name, Email, Location, userRoleValue },
+        { Name, Email, Location, cleanUserRole },
         from,
         preferred_appointment_start_time,
-        project_type,
+        cleanProjectType,
         Issue
       );
 
@@ -623,10 +689,10 @@ exports.webhookTest = async (req, res) => {
       // Contact exists, update and create deal
       result = await updateContactAndCreateDeal(
         contactId,
-        { Name, Email, Location, userRoleValue, Issue },
+        { Name, Email, Location, cleanUserRole, Issue },
         from,
         preferred_appointment_start_time,
-        project_type,
+        cleanProjectType,
         Issue
       );
     }
