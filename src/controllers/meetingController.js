@@ -359,7 +359,8 @@ async function updateContactAndCreateDeal(contactId, variables, from, preferred_
 
   // 2. Get ownerId for deal assignment (your existing logic)
   const OwnerId = await getMeetingHostId(contactId);
-
+  console.log("OwnerId", OwnerId);
+  
   console.log("issue in deal, meeting was scheduled: ", Issue);
   
 
@@ -574,7 +575,7 @@ function normalizeInput(input = '', allowedList) {
 
 
 // Main webhook handler
-exports.webhookTest = async (req, res) => {
+exports.webhookBland = async (req, res) => {
   try {
     const {
       first_name,
@@ -712,6 +713,22 @@ exports.webhookTest = async (req, res) => {
       contact: result.contact,
       deal: result.deal,
       message: 'Contact and deal processed successfully.'
+    });
+
+  } catch (error) {
+    res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+  }
+};
+
+
+// Main webhook handler
+exports.test = async (req, res) => {
+  try {
+    console.log("data: ", req.body);
+    
+    res.json({
+      data: req.body,
+      message: 'data recieved.'
     });
 
   } catch (error) {

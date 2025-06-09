@@ -5,10 +5,10 @@ const meetingController = require('../controllers/meetingController');
 // Make sure these are all functions!
 router.get('/availability', meetingController.getAvailability);
 router.post('/book', meetingController.bookMeeting);
-router.post('/webhook', meetingController.webhookTest);
+router.post('/webhook', meetingController.webhookBland);
 
 
-
+router.post('/test', meetingController.test);
 
 
 module.exports = router;
