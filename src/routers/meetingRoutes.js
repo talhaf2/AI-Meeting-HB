@@ -10,5 +10,8 @@ router.post('/webhook', meetingController.webhookBland);
 
 router.post('/webpage', meetingController.webapge);
 
+router.post('/test', meetingController.test);
+
+
 
 module.exports = router;
