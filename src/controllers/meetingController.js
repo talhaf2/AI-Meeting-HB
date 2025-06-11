@@ -751,7 +751,8 @@ exports.webapge = async (req, res) => {
       lastname,
       hs_object_id, // HubSpot Contact ID
       engagements_last_meeting_booked,
-      project_type_webpage
+      project_type_webpage,
+      address
     } = req.body;
 
    
@@ -806,8 +807,6 @@ exports.webapge = async (req, res) => {
       `${HUB_URL}/contacts/${contactId}/associations/deals`,
       { headers }
     );
-
-    console.log("assoc: ", assoc);
     
     const dealIds = assoc.data.results.map(r => r.id);
 
@@ -842,7 +841,7 @@ exports.webapge = async (req, res) => {
       appointment_set_: new Date(Number(engagements_last_meeting_booked)).toISOString(),
       customer_success_manager: OwnerId,
       project_type: project_type_webpage,
-      //deal_address__if_different_from_contact_address_: Location,
+      deal_address__if_different_from_contact_address_: address
       //project_description: Issue 
     };
 
