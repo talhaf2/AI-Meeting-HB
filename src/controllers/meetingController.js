@@ -735,3 +735,149 @@ exports.test = async (req, res) => {
     res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
   }
 };
+
+
+const HUB_URL = 'https://api.hubapi.com/crm/v3/objects';
+const headers = {
+  Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+  'Content-Type': 'application/json',
+};
+
+exports.webapge = async (req, res) => {
+  try {
+    const {
+      email,
+      firstname,
+      lastname,
+      hs_object_id, // HubSpot Contact ID
+      engagements_last_meeting_booked,
+      project_type_webpage
+    } = req.body;
+
+   
+    
+
+    // Validate required input
+    if (!email && !hs_object_id) {
+      return res.status(400).json({ error: "Missing 'email' or 'hs_object_id'" });
+    }
+
+    // 1. Ensure contact exists or retrieve via hs_object_id
+    let contactId = hs_object_id;
+    let contactData;
+
+    if (!contactId && email) {
+      const search = await axios.post(
+        `${HUB_URL}/contacts/search`,
+        {
+          filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
+          properties: ['firstname', 'lastname', 'email'],
+        },
+        { headers }
+      );
+      const found = search.data.results?.[0];
+      if (found) {
+        contactId = found.id;
+      }
+    }
+
+    if (!contactId) {
+      const create = await axios.post(
+        `${HUB_URL}/contacts`,
+        { properties: { email, firstname, lastname } },
+        { headers }
+      );
+      contactId = create.data.id;
+      contactData = create.data;
+    } else {
+      console.log('in');
+      
+      const update = await axios.patch(
+        `${HUB_URL}/contacts/${contactId}`,
+        { properties: { firstname, lastname, email } },
+        { headers }
+      );
+      contactData = update.data;
+    }
+    
+
+    // 2. Fetch associated deals
+    const assoc = await axios.get(
+      `${HUB_URL}/contacts/${contactId}/associations/deals`,
+      { headers }
+    );
+
+    console.log("assoc: ", assoc);
+    
+    const dealIds = assoc.data.results.map(r => r.id);
+
+    console.log("dealIds: ", dealIds);
+
+
+    // 3. Pick the most recent deal
+    let latestDealId = null;
+    if (dealIds.length) {
+      const deals = await Promise.all(
+        dealIds.map(id =>
+          axios.get(`${HUB_URL}/deals/${id}?properties=createdate`, { headers })
+        )
+      );
+      deals.sort((a, b) =>
+        new Date(b.data.properties.createdate) - new Date(a.data.properties.createdate)
+      );
+      latestDealId = deals[0].data.id;
+    }
+
+    console.log("latestDealId: ", latestDealId);
+
+    // Get ownerId for deal assignment (your existing logic)
+    const OwnerId = await getMeetingHostId(contactId);
+    console.log("OwnerId", OwnerId);
+    
+
+    // 4. Update existing deal or create new one
+    const dealProps = {
+      pipeline: "default",
+      dealstage: "contractsent",
+      appointment_set_: new Date(Number(engagements_last_meeting_booked)).toISOString(),
+      customer_success_manager: OwnerId,
+      project_type: project_type_webpage,
+      //deal_address__if_different_from_contact_address_: Location,
+      //project_description: Issue 
+    };
+
+    let dealResult;
+    if (latestDealId) {
+      const updatedDeal = await axios.patch(
+        `${HUB_URL}/deals/${latestDealId}`,
+        { properties: dealProps },
+        { headers }
+      );
+      dealResult = updatedDeal.data;
+    } else {
+      const createdDeal = await axios.post(
+        `${HUB_URL}/deals`,
+        {
+          properties: {
+            dealname: `Webpage deal - ${ email}`,
+            ...dealProps,
+          },
+          associations: [
+            {
+              to: { id: contactId },
+              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }],
+            },
+          ],
+        },
+        { headers }
+      );
+      dealResult = createdDeal.data;
+    }
+
+    return res.json({ contact: contactData, deal: dealResult });
+  } catch (err) {
+    console.error('Webhook error', err.response?.data || err);
+    res.status(500).json({ error: err.message });
+  }
+};
+

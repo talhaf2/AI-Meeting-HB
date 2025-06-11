@@ -8,7 +8,7 @@ router.post('/book', meetingController.bookMeeting);
 router.post('/webhook', meetingController.webhookBland);
 
 
-router.post('/test', meetingController.test);
+router.post('/webpage', meetingController.webapge);
 
 
 module.exports = router;
