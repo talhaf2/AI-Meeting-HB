@@ -201,6 +201,9 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
   let contactId = null;
   let contactResp = null;
 
+  console.log("in");
+  
+
   try {
     let searchResp;
     if(variables.Email !== undefined){
@@ -225,7 +228,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
         }
       )
     }
-
+      console.log(variables.cleanUserRole);
     if (searchResp.data.results && searchResp.data.results.length > 0) {
       // Contact exists, update it
       contactId = searchResp.data.results[0].id;
@@ -236,7 +239,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
             firstname: variables.Name,
             phone: from,
             address: variables.Location,
-            project_role__sales_rep: variables.userRoleValue,
+            project_role__sales_rep: variables.cleanUserRole,
           }
         },
         {
@@ -264,7 +267,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
           email: variables.Email,
           phone: from,
           address: variables.Location,
-          project_role__sales_rep: variables.userRoleValue,
+          project_role__sales_rep: variables.cleanUserRole,
         }
       },
       {
@@ -339,12 +342,13 @@ async function getMeetingHostId(contactId) {
 
 // Update existing contact and create deal
 async function updateContactAndCreateDeal(contactId, variables, from, preferred_appointment_start_time, project_type, Issue) {
+  
   // 1. Update contact
   const contactUpdateResp = await axios.patch(
     `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
     {
       properties: {
-        project_role__sales_rep: variables.userRoleValue,
+        project_role__sales_rep: variables.cleanUserRole,
         phone: from,
         address: variables.Location
       }
@@ -660,9 +664,10 @@ exports.webhookBland = async (req, res) => {
     }
 
     let result;
+      
 
     if (!contactId) {
-
+      
       //Meeting was not scheduled due to incorrect email address.
       if (incorrectEmail){
         console.log("Meeting Not scheduled, created contact and sending mesaage to user for incorrect email. ");
@@ -675,6 +680,7 @@ exports.webhookBland = async (req, res) => {
         await sendTwilioSMS(from, body, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       }
 
+      
       // Contact not present, create new contact and deal
       result = await createOrUpdateContactAndDeal(
         { Name, Email, Location, cleanUserRole },
@@ -687,10 +693,11 @@ exports.webhookBland = async (req, res) => {
       console.log(result.contact.id);
 
     } else {
+
       // Contact exists, update and create deal
       result = await updateContactAndCreateDeal(
         contactId,
-        { Name, Email, Location, cleanUserRole, Issue },
+        { Name, Email, Location, cleanUserRole },
         from,
         preferred_appointment_start_time,
         cleanProjectType,
@@ -785,7 +792,7 @@ exports.webapge = async (req, res) => {
     if (!contactId) {
       const create = await axios.post(
         `${HUB_URL}/contacts`,
-        { properties: { email, firstname, lastname } },
+        { properties: { email, firstname, lastname, address } },
         { headers }
       );
       contactId = create.data.id;
