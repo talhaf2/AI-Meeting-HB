@@ -323,7 +323,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
 
 //Get Meeting Host
 async function getMeetingHostId(contactId) {
-  try {
+try {
     const response = await axios.get(
       `https://api.hubapi.com/engagements/v1/engagements/associated/contact/${contactId}/paged?limit=100`,
       {
@@ -333,9 +333,25 @@ async function getMeetingHostId(contactId) {
         }
       }
     );
-    return response.data.results.at(-1)?.engagement.ownerId ?? null;
+
+    const meetings = response.data.results
+      .filter(e => e.engagement?.type === 'MEETING')
+      .sort((a, b) => b.engagement.timestamp - a.engagement.timestamp);
+
+    const latest = meetings[0];
+
+    if (!latest) {
+      console.log('No meeting engagement found');
+      return null;
+    }
+
+    const { engagement } = latest;
+
+    console.log('Found Meeting:', { ownerId: engagement.ownerId });
+
+    return engagement.ownerId;
   } catch (error) {
-    console.error('Error fetching hubspot_owner_id:', error.response?.data || error.message);
+    console.error('Error getting meeting host ID:', error.response?.data || error.message);
     return null;
   }
 }
