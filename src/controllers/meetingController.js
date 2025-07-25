@@ -774,11 +774,12 @@ exports.webapge = async (req, res) => {
       lastname,
       hs_object_id, // HubSpot Contact ID
       engagements_last_meeting_booked,
-      address,
+      full_project_address_webpage_meeting,
       type_of_project,
       your_phone_number,
       project_role_meeting, // homeowner/ AEC professional
-      project_role_hs_meeting // when user select AEC as a project role, other option after selection
+      project_role_hs_meeting, // when user select AEC as a project role, other option after selection,
+      project_description_webpage_meeting,
     } = req.body;
 
 
@@ -819,7 +820,7 @@ exports.webapge = async (req, res) => {
     if (!contactId) {
       const create = await axios.post(
         `${HUB_URL}/contacts`,
-        { properties: { email, firstname, lastname, address, phone: your_phone_number, project_role__sales_rep: project_role } },
+        { properties: { email, firstname, lastname, phone: your_phone_number, project_role__sales_rep: project_role } },
         { headers }
       );
       contactId = create.data.id;
@@ -829,7 +830,7 @@ exports.webapge = async (req, res) => {
 
       const update = await axios.patch(
         `${HUB_URL}/contacts/${contactId}`,
-        { properties: { firstname, lastname, email, address, phone: your_phone_number, project_role__sales_rep: project_role } },
+        { properties: { firstname, lastname, email, phone: your_phone_number, project_role__sales_rep: project_role } },
         { headers }
       );
       contactData = update.data;
@@ -847,20 +848,52 @@ exports.webapge = async (req, res) => {
     console.log("dealIds: ", dealIds);
 
     // 3. Pick the most recent deal
+    // let latestDealId = null;
+    // let latestDealData = null;
+
+    // if (dealIds.length) {
+    //   const deals = await Promise.all(
+    //     dealIds.map(id =>
+    //       axios.get(`${HUB_URL}/deals/${id}?properties=createdate,appointment_set_,customer_success_manager,project_type,deal_address__if_different_from_contact_address_`, { headers })
+    //     )
+    //   );
+    //   deals.sort((a, b) =>
+    //     new Date(b.data.properties.createdate) - new Date(a.data.properties.createdate)
+    //   );
+    //   latestDealId = deals[0].data.id;
+    //   latestDealData = deals[0].data.properties;
+    // }
+
     let latestDealId = null;
     let latestDealData = null;
+    let shouldUpdateExistingDeal = false;
 
     if (dealIds.length) {
       const deals = await Promise.all(
         dealIds.map(id =>
-          axios.get(`${HUB_URL}/deals/${id}?properties=createdate,appointment_set_,customer_success_manager,project_type,deal_address__if_different_from_contact_address_`, { headers })
+          axios.get(`${HUB_URL}/deals/${id}?properties=dealname,createdate,appointment_set_,customer_success_manager,project_type,deal_address__if_different_from_contact_address_`, { headers })
         )
       );
-      deals.sort((a, b) =>
-        new Date(b.data.properties.createdate) - new Date(a.data.properties.createdate)
-      );
-      latestDealId = deals[0].data.id;
-      latestDealData = deals[0].data.properties;
+
+      // Sort by most recent
+      deals.sort((a, b) => Number(b.data.id) - Number(a.data.id));
+
+
+      const mostRecent = deals[0];
+      latestDealId = mostRecent.data.id;
+      latestDealData = mostRecent.data.properties;
+
+      console.log("latestDealData: ", latestDealData);
+      const createdDate = new Date(latestDealData.createdate);
+      const now = new Date();
+      const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+
+      const nameIncludesInquiry = latestDealData.dealname?.toLowerCase().includes("inquiry");
+      console.log("nameIncludesInquiry; ", nameIncludesInquiry);
+
+      const wasCreatedRecently = createdDate > twoDaysAgo;
+
+      shouldUpdateExistingDeal = nameIncludesInquiry && wasCreatedRecently;
     }
 
     console.log("latestDealId: ", latestDealId);
@@ -870,26 +903,25 @@ exports.webapge = async (req, res) => {
     console.log("OwnerId", OwnerId);
 
     // Build properties to update (only if current value is empty)
-    const dealProps = {};
+    const dealProps = {
+      pipeline: "default",
+      deal_association_type: "Primary Deal",
+      project_description: project_description_webpage_meeting,
+      dealstage: "contractsent",
+      appointment_set_: new Date(Number(engagements_last_meeting_booked)).toISOString(),
+      customer_success_manager: OwnerId,
+      project_type: type_of_project,
+      deal_address__if_different_from_contact_address_: full_project_address_webpage_meeting
+    };
 
-    if (latestDealData?.appointment_set_ === null || latestDealData?.appointment_set_ === undefined) {
-      dealProps.appointment_set_ = new Date(Number(engagements_last_meeting_booked)).toISOString();
-    }
-    if (!latestDealData?.customer_success_manager) {
-      dealProps.customer_success_manager = OwnerId;
-    }
-    if (!latestDealData?.project_type) {
-      dealProps.project_type = type_of_project;
-    }
-    if (!latestDealData?.deal_address__if_different_from_contact_address_) {
-      dealProps.deal_address__if_different_from_contact_address_ = address;
-    }
     console.log("OwnerId");
-    
+
+    console.log("shouldUpdateExistingDeal:", shouldUpdateExistingDeal);
 
     let dealResult;
 
-    if (latestDealId && Object.keys(dealProps).length > 0) {
+    // if (latestDealId && Object.keys(dealProps).length > 0) {
+    if (shouldUpdateExistingDeal) {
       console.log("in first");
       const updatedDeal = await axios.patch(
         `${HUB_URL}/deals/${latestDealId}`,
@@ -897,20 +929,22 @@ exports.webapge = async (req, res) => {
         { headers }
       );
       dealResult = updatedDeal.data;
-    } else if (!latestDealId) {
+    } else if (!latestDealId || !shouldUpdateExistingDeal) {
       console.log("in second");
-      
+
       const createdDeal = await axios.post(
         `${HUB_URL}/deals`,
         {
           properties: {
             dealname: `Webpage deal - ${email}`,
             pipeline: "default",
+            deal_association_type: "Primary Deal",
+            project_description: project_description_webpage_meeting,
             dealstage: "contractsent",
             appointment_set_: new Date(Number(engagements_last_meeting_booked)).toISOString(),
             customer_success_manager: OwnerId,
             project_type: type_of_project,
-            deal_address__if_different_from_contact_address_: address
+            deal_address__if_different_from_contact_address_: full_project_address_webpage_meeting
           },
           associations: [
             {
@@ -923,7 +957,7 @@ exports.webapge = async (req, res) => {
       );
       dealResult = createdDeal.data;
     } else {
-       console.log("Nothing updated, deal was not blank");
+      console.log("Nothing updated, deal was not blank");
       // No update needed
       dealResult = { message: 'No deal properties were empty. No update performed.' };
     }
