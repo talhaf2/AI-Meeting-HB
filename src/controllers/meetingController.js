@@ -3,6 +3,7 @@ const { DateTime } = require('luxon');
 const { sendEmail } = require('../utils/email');
 const twilio = require('twilio');
 const { json } = require('express');
+const { sendSlackMessage } = require('../services/slackService');
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Los_Angeles'; // Pacific Time
@@ -355,6 +356,19 @@ async function getMeetingHostId(contactId) {
     return null;
   }
 }
+
+async function fetchCSMName(userId) {
+  if (!userId) return "Unknown PM";
+  try {
+    const { firstName, lastName } = await hubspotGet(`/crm/v3/owners/${userId}`);
+    const fullName = `${firstName || ""} ${lastName || ""}`.trim();
+    return fullName;
+  } catch (err) {
+    console.error(`❌ Failed to fetch PM for ${cacheKey}:`, err.message);
+    return "Unknown PM";
+  }
+}
+
 
 // Update existing contact and create deal
 async function updateContactAndCreateDeal(contactId, variables, from, preferred_appointment_start_time, project_type, Issue) {
@@ -760,6 +774,9 @@ exports.test = async (req, res) => {
 };
 
 
+
+
+
 const HUB_URL = 'https://api.hubapi.com/crm/v3/objects';
 const headers = {
   Authorization: `Bearer ${HUBSPOT_API_KEY}`,
@@ -781,9 +798,6 @@ exports.webapge = async (req, res) => {
       project_role_hs_meeting, // when user select AEC as a project role, other option after selection,
       project_description_webpage_meeting,
     } = req.body;
-
-
-
 
     // Validate required input
     if (!email && !hs_object_id) {
@@ -835,7 +849,6 @@ exports.webapge = async (req, res) => {
       );
       contactData = update.data;
     }
-
 
     // 2. Fetch associated deals
     const assoc = await axios.get(
@@ -901,6 +914,31 @@ exports.webapge = async (req, res) => {
     // Get ownerId for deal assignment
     const OwnerId = await getMeetingHostId(contactId);
     console.log("OwnerId", OwnerId);
+    const CSMname = await fetchCSMName(OwnerId)
+
+    console.log(CSMname);
+    const contactName = `${firstname} ${lastname}`;
+    const role = project_role_meeting === 'AEC professional' && project_role_hs_meeting
+      ? `${project_role_meeting} (${project_role_hs_meeting})`
+      : project_role_meeting;
+
+    // Convert only start time
+    const start = DateTime.fromMillis(engagements_last_meeting_booked, { zone: 'America/Los_Angeles' });
+    const formattedTime = `${start.toFormat('h:mma')}, ${start.toFormat('cccc, LLLL d, yyyy')}`;
+    console.log(formattedTime);
+
+    const msg =
+      `<https://app.hubspot.com/contacts/45924609/record/0-1/${hs_object_id}>\n\n` +
+      `From Huspot Appointments\n` +
+      `Appointment set for *${CSMname}*\n` +
+      `Date/time: *${formattedTime}*\n\n` +
+      `Scope of Work: ${project_description_webpage_meeting || 'N/A'}\n\n` +
+      `Name: ${contactName}\n` +
+      `Number: ${your_phone_number || 'N/A'}\n` +
+      `Email: ${email || 'N/A'}\n` +
+      `Address: ${full_project_address_webpage_meeting || 'N/A'}`;
+
+    const post = await sendSlackMessage(msg);
 
     // Build properties to update (only if current value is empty)
     const dealProps = {
