@@ -359,12 +359,23 @@ async function getMeetingHostId(contactId) {
 
 async function fetchCSMName(userId) {
   if (!userId) return "Unknown PM";
+
   try {
-    const { firstName, lastName } = await hubspotGet(`/crm/v3/owners/${userId}`);
-    const fullName = `${firstName || ""} ${lastName || ""}`.trim();
-    return fullName;
-  } catch (err) {
-    console.error(`❌ Failed to fetch PM for ${cacheKey}:`, err.message);
+    const { data } = await axios.get(
+      `https://api.hubapi.com/crm/v3/owners/${userId}`,
+      {
+        headers
+      }
+    );
+
+     logger.info("data", data);
+    
+
+    const fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
+    logger.info(`Resolved CSM name for user ${userId}: ${fullName}`);
+    return fullName || "Unknown PM";
+  } catch (error) {
+    logger.error(`Failed to fetch CSM for user ${userId}`, error.response?.data || error.message);
     return "Unknown PM";
   }
 }

@@ -8,9 +8,7 @@ async function getMeetingHostId(contactId) {
     const { data } = await axios.get(
       `https://api.hubapi.com/engagements/v1/engagements/associated/contact/${contactId}/paged?limit=100`,
       {
-        headers: {
-          headers
-        }
+        headers
       }
     );
 
@@ -42,9 +40,7 @@ async function fetchCSMName(userId) {
     const { data } = await axios.get(
       `https://api.hubapi.com/crm/v3/owners/${userId}`,
       {
-        headers: {
-          headers
-        }
+        headers
       }
     );
 
