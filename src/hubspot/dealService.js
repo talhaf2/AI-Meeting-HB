@@ -40,24 +40,79 @@ exports.getLatestDeal = async (dealIds = []) => {
   }
 };
 
-exports.createOrUpdateDeal = async ({ shouldUpdate, latestDealId, email, dealProps, contactId }) => {
+// exports.createOrUpdateDeal = async ({ shouldUpdate, latestDealId, email, dealProps, contactId }) => {
+//   try {
+//     if (shouldUpdate && latestDealId) {
+//       const { data } = await axios.patch(`${HUB_URL}/deals/${latestDealId}`, { properties: dealProps }, { headers });
+//       return data;
+//     }
+
+//     const { data } = await axios.post(`${HUB_URL}/deals`, {
+//       properties: { dealname: `Webpage deal - ${email}`, ...dealProps },
+//       associations: [{
+//         to: { id: contactId },
+//         types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }]
+//       }]
+//     }, { headers });
+
+//     return data;
+//   } catch (err) {
+//     logger.error('Failed to create/update deal', err.response?.data || err);
+//     throw err;
+//   }
+// };
+
+
+// Deal service: keep shouldUpdate, add Twilio-first behavior
+
+
+exports.createOrUpdateDeal = async ({
+  twilioDealId,          // ← prefer this if present
+  latestDealId,          // hs_object_id_deal (HubSpot's "latest")
+  shouldUpdate,          // keep existing behavior
+  email,
+  dealProps,
+  contactId,
+}) => {
   try {
-    if (shouldUpdate && latestDealId) {
-      const { data } = await axios.patch(`${HUB_URL}/deals/${latestDealId}`, { properties: dealProps }, { headers });
+    // A) Twilio deal present → ALWAYS UPDATE it (no create paths)
+    if (twilioDealId) {
+      const { data } = await axios.patch(
+        `${HUB_URL}/deals/${twilioDealId}`,
+        { properties: dealProps },
+        { headers }
+      );
+
       return data;
     }
 
-    const { data } = await axios.post(`${HUB_URL}/deals`, {
-      properties: { dealname: `Webpage deal - ${email}`, ...dealProps },
-      associations: [{
-        to: { id: contactId },
-        types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }]
-      }]
-    }, { headers });
+    // B) No Twilio deal → respect shouldUpdate semantics on latestDealId
+    if (shouldUpdate && latestDealId) {
+      const { data } = await axios.patch(
+        `${HUB_URL}/deals/${latestDealId}`,
+        { properties: dealProps },
+        { headers }
+      );
+      return data;
+    }
 
+    // C) Neither Twilio nor updatable latest → CREATE new
+    const { data } = await axios.post(
+      `${HUB_URL}/deals`,
+      {
+        properties: { dealname: `Webpage deal - ${email || 'no-email'}`, ...dealProps },
+        associations: [
+          {
+            to: { id: contactId },
+            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }]
+          }
+        ]
+      },
+      { headers }
+    );
     return data;
   } catch (err) {
-    logger.error('Failed to create/update deal', err.response?.data || err);
+    logger.error('Failed to create/update deal', err?.response?.data || err);
     throw err;
   }
 };

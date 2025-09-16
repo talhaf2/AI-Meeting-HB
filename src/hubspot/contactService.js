@@ -37,3 +37,32 @@ exports.updateContact = async (contactId, properties) => {
     throw err;
   }
 };
+
+/**
+ * Merge HubSpot contacts
+ * @param {string} primaryId - contact to keep (Twilio contact)
+ * @param {string} secondaryId - contact to merge in (form-created contact)
+ */
+exports.mergeContacts = async (primaryId, secondaryId) => {
+  logger.info("mergeContacts: requested", { primaryId, secondaryId });
+
+  if (!primaryId || !secondaryId || primaryId === secondaryId) {
+    logger.warn("⚠️ mergeContacts called with invalid IDs", { primaryId, secondaryId });
+    return;
+  }
+
+  try {
+    // Do the merge
+    await axios.post(`${HUB_URL}/contacts/merge`, {
+      primaryObjectId: primaryId,
+      objectIdToMerge: secondaryId
+    }, { headers });
+
+    logger.info(`✅ Merged contact ${secondaryId} into ${primaryId}`);
+  } catch (err) {
+    const status = err?.response?.status;
+    const data = err?.response?.data;
+    logger.error("❌ HubSpot merge failed", { primaryId, secondaryId, status, data });
+    throw err;
+  }
+};

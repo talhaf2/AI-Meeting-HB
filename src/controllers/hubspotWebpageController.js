@@ -1,10 +1,10 @@
-const { DateTime } = require('luxon');
 const { getOrCreateContact, updateContact } = require('../hubspot/contactService');
 const { getAssociatedDeals, getLatestDeal, createOrUpdateDeal } = require('../hubspot/dealService');
 const { getMeetingHostId, fetchCSMName } = require('../hubspot/ownerService');
 const { sendSlackMessage } = require('../services/slackService');
 const { formatAppointmentTime } = require('../utils/time');
 const logger = require('../utils/logger');
+const { mergeContacts } = require('../hubspot/contactService');
 
 exports.webapge = async (req, res) => {
     try {
@@ -23,6 +23,10 @@ exports.webapge = async (req, res) => {
             hs_meeting_start_time,
             hs_object_id_deal,
             dealname,
+            // Twillio created contact and deal.
+            twillio_contact,
+            twillio_deal
+
         } = req.body;
 
         if (!email && !hs_object_id) {
@@ -31,13 +35,26 @@ exports.webapge = async (req, res) => {
 
         const contactRole = project_role_meeting === "Homeowner" ? "Homeowner" : project_role_hs_meeting;
 
+        // 🟢 For Twillio Missed call: If both Twilio contact and a new form contact exist → merge
+        if (twillio_contact && hs_object_id && twillio_contact !== hs_object_id) {
+            try {
+                await mergeContacts(twillio_contact, hs_object_id);
+                logger.info(
+                    `Form contact ${hs_object_id} merged into Twilio contact ${twillio_contact}`
+                );
+            } catch (err) {
+                logger.warn("Merge step failed, continuing with fallback:", err.message);
+            }
+        }
+
+
         const { contactId, contactData, isNew } = await getOrCreateContact({
             email,
             firstname,
             lastname,
             phone: your_phone_number,
             role: contactRole,
-            hs_object_id
+            hs_object_id: twillio_contact || hs_object_id // prefer Twilio ID if present
         });
 
         if (!isNew) {
@@ -52,7 +69,7 @@ exports.webapge = async (req, res) => {
 
         // const dealIds = await getAssociatedDeals(contactId);
         //const { latestDealId, latestDealData, shouldUpdateExistingDeal } = await getLatestDeal(dealIds);
-        
+
         const hasInquiry = dealname?.toLowerCase().includes("inquiry");
 
         const OwnerId = await getMeetingHostId(contactId);
@@ -87,13 +104,23 @@ exports.webapge = async (req, res) => {
             deal_address__if_different_from_contact_address_: full_project_address_webpage_meeting
         };
 
+        // const dealResult = await createOrUpdateDeal({
+        //     shouldUpdate: hasInquiry,
+        //     latestDealId: hs_object_id_deal, 
+        //     email,
+        //     dealProps,
+        //     contactId
+        // });
+
         const dealResult = await createOrUpdateDeal({
             shouldUpdate: hasInquiry,
-            hs_object_id_deal,
+            twilioDealId: twillio_deal || null,    // 👈 authoritative if present
+            latestDealId: hs_object_id_deal || null,
             email,
             dealProps,
             contactId
         });
+
 
         res.json({ contact: contactData, deal: dealResult });
     } catch (err) {
@@ -120,7 +147,7 @@ exports.webapgeOutcomeChange = async (req, res) => {
             current_dealstage
         } = req.body;
 
-        if (current_dealstage !== "contractsent"){return res.json({ message: "Appointment not set" });}
+        if (current_dealstage !== "contractsent") { return res.json({ message: "Appointment not set" }); }
 
         const contactName = `${firstname} ${lastname}`;
         const formattedTime = formatAppointmentTime(hs_meeting_start_time);
@@ -129,7 +156,7 @@ exports.webapgeOutcomeChange = async (req, res) => {
         let d_t = ''
         let dealstage;
 
-        if (hs_meeting_outcome === "CANCELED"){
+        if (hs_meeting_outcome === "CANCELED") {
             title = 'From Huspot Appointments - Meeting Canceled\n\n'
             dealstage = "closedlost"
         } else {
