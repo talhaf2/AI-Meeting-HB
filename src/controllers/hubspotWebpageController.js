@@ -38,10 +38,12 @@ exports.webapge = async (req, res) => {
         // 🟢 For Twillio Missed call: If both Twilio contact and a new form contact exist → merge
         if (twillio_contact && hs_object_id && twillio_contact !== hs_object_id) {
             try {
-                await mergeContacts(twillio_contact, hs_object_id);
+                await mergeContacts(hs_object_id, twillio_contact);
                 logger.info(
                     `Form contact ${hs_object_id} merged into Twilio contact ${twillio_contact}`
                 );
+
+
             } catch (err) {
                 logger.warn("Merge step failed, continuing with fallback:", err.message);
             }
@@ -54,8 +56,11 @@ exports.webapge = async (req, res) => {
             lastname,
             phone: your_phone_number,
             role: contactRole,
-            hs_object_id: twillio_contact || hs_object_id // prefer Twilio ID if present
+            hs_object_id: hs_object_id // prefer Twilio ID if present
         });
+
+        console.log({ contactId, isNew, contactData });
+        
 
         if (!isNew) {
             await updateContact(contactId, {
@@ -72,7 +77,7 @@ exports.webapge = async (req, res) => {
 
         const hasInquiry = dealname?.toLowerCase().includes("inquiry");
 
-        const OwnerId = await getMeetingHostId(contactId);
+        const OwnerId = await getMeetingHostId(hs_object_id || contactId);
         const CSMname = await fetchCSMName(OwnerId);
 
         const contactName = `${firstname} ${lastname}`;
@@ -128,7 +133,6 @@ exports.webapge = async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 };
-
 
 exports.webapgeOutcomeChange = async (req, res) => {
     try {

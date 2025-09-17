@@ -38,11 +38,11 @@ exports.updateContact = async (contactId, properties) => {
   }
 };
 
-/**
- * Merge HubSpot contacts
- * @param {string} primaryId - contact to keep (Twilio contact)
- * @param {string} secondaryId - contact to merge in (form-created contact)
- */
+// /**
+//  * Merge HubSpot contacts
+//  * @param {string} primaryId - contact to keep (Twilio contact)
+//  * @param {string} secondaryId - contact to merge in (form-created contact)
+//  */
 exports.mergeContacts = async (primaryId, secondaryId) => {
   logger.info("mergeContacts: requested", { primaryId, secondaryId });
 
@@ -66,3 +66,4 @@ exports.mergeContacts = async (primaryId, secondaryId) => {
     throw err;
   }
 };
+
