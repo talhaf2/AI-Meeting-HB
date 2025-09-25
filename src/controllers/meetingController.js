@@ -132,13 +132,19 @@ exports.bookMeeting = async (req, res) => {
       email,
       Issue,
       Location,
-      phone
+      phone,
+      call_type
     } = req.body;
 
     if (userRole === undefined || userRole === null ||
       userNeed === undefined || userNeed === null ||
       !startTime || !endTime || !firstName || !email) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    let phone_fallback = phone // Fallback phone number if not provided
+    if (call_type === "web_call"){
+      phone_fallback = "923416983857"
     }
 
     let slug = getSlugFromSelection(userRole, userNeed)
@@ -171,7 +177,7 @@ exports.bookMeeting = async (req, res) => {
       formFields: [
         {
           name: "Please include a phone number so I can contact you.",
-          value: phone
+          value: phone_fallback
         },
         {
           name: "Please provide any details to help prepare for our meeting, such as the site address.",
