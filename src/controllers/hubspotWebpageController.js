@@ -159,7 +159,7 @@ exports.webapgeOutcomeChange = async (req, res) => {
 
         if (current_dealstage !== "contractsent") { return res.json({ message: "Appointment not set" }); }
 
-        const contactName = `${firstname} ${lastname}`;
+        const contactName = `${firstname} ${lastname || ""}`;
         const formattedTime = formatAppointmentTime(hs_meeting_start_time);
 
         let title = ''
