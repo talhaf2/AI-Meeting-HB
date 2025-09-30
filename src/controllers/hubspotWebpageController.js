@@ -31,6 +31,9 @@ exports.webapge = async (req, res) => {
 
         } = req.body;
 
+        console.log('req.body', req.body);
+        
+
         if (!email && !hs_object_id) {
             return res.status(400).json({ error: "Missing 'email' or 'hs_object_id'" });
         }
@@ -82,7 +85,7 @@ exports.webapge = async (req, res) => {
         const OwnerId = await getMeetingHostId(hs_object_id || contactId);
         const CSMname = await fetchCSMName(OwnerId);
 
-        const contactName = `${firstname} ${lastname}`;
+        const contactName = `${firstname} ${lastname || ""}`;
 
         const formattedTime = formatAppointmentTime(hs_meeting_start_time);
 

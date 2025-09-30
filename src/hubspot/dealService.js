@@ -72,7 +72,7 @@ exports.createOrUpdateDeal = async ({
       return data;
     }
     let dealname =  `Webpage deal - ${email || 'no-email'}`;
-    if (retell_appointment_source === "true"  && !twilioDealId) {
+    if ((retell_appointment_source || retell_appointment_source === "true") && !twilioDealId) {
       logger.info(`Retell appointment source detected but no Twilio deal ID. Creating new deal for contact ${contactId}.`);
       dealname = `AI agent deal - ${email || 'no-email'}`;
     }
