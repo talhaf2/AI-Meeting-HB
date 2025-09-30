@@ -134,7 +134,10 @@ exports.bookMeeting = async (req, res) => {
       Location,
       phone,
       call_type
-    } = req.body;
+    } = req.body.args;
+
+    console.log("Request body: ", req.body.args);
+    
 
     if (userRole === undefined || userRole === null ||
       userNeed === undefined || userNeed === null ||
