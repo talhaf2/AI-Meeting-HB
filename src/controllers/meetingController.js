@@ -125,19 +125,18 @@ exports.bookMeeting = async (req, res) => {
     const {
       userRole,
       userNeed,
+      project_type,
+      userRoleValue,
       startTime,
       endTime,
       firstName,
       lastName,
       email,
-      Issue,
+      description,
       Location,
       phone,
       call_type
     } = req.body.args;
-
-    console.log("Request body: ", req.body.args);
-    
 
     if (userRole === undefined || userRole === null ||
       userNeed === undefined || userNeed === null ||
@@ -146,18 +145,11 @@ exports.bookMeeting = async (req, res) => {
     }
 
     let phone_fallback = phone // Fallback phone number if not provided
-    if (call_type === "web_call"){
+    if (call_type === "web_call") {
       phone_fallback = "923416983857"
     }
 
     let slug = getSlugFromSelection(userRole, userNeed)
-
-    let userRoleValue = ""
-    if (userRole == 0 || userRole == "0") {
-      userRoleValue = "HomeOwner"
-    } else {
-      userRoleValue = "AEC Professional"
-    }
 
     // Append "-07:00" only if no timezone offset present
     const formattedStartTime = hasMinusSevenOffset(startTime)
@@ -179,13 +171,21 @@ exports.bookMeeting = async (req, res) => {
       timezone: DEFAULT_TIMEZONE,
       formFields: [
         {
-          name: "Please include a phone number so I can contact you.",
+          name: "your_phone_number",
           value: phone_fallback
         },
         {
-          name: "Please provide any details to help prepare for our meeting, such as the site address.",
-          value: Issue + " and the project location is: " + Location
-        }
+          name: "full_project_address_webpage_meeting",
+          value: Location || " "
+        },
+        {
+          name: "type_of_project",
+          value: project_type || " "
+        },
+        { name: "project_role__sales_rep", value: userRoleValue || " " },
+        { name: "retell_appointment_source", value: "true" || " " },
+        { name: "project_description_webpage_meeting", value: description || " " }
+
       ]
     };
 
@@ -377,8 +377,8 @@ async function fetchCSMName(userId) {
       }
     );
 
-     logger.info("data", data);
-    
+    logger.info("data", data);
+
 
     const fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
     logger.info(`Resolved CSM name for user ${userId}: ${fullName}`);

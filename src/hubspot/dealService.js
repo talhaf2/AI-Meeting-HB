@@ -42,6 +42,7 @@ exports.getLatestDeal = async (dealIds = []) => {
 
 // Deal service: keep shouldUpdate, add Twilio-first behavior
 exports.createOrUpdateDeal = async ({
+  retell_appointment_source,
   twilioDealId,          // ← prefer this if present
   latestDealId,          // hs_object_id_deal (HubSpot's "latest")
   shouldUpdate,          // keep existing behavior
@@ -70,12 +71,17 @@ exports.createOrUpdateDeal = async ({
       );
       return data;
     }
+    let dealname =  `Webpage deal - ${email || 'no-email'}`;
+    if (retell_appointment_source === "true"  && !twilioDealId) {
+      logger.info(`Retell appointment source detected but no Twilio deal ID. Creating new deal for contact ${contactId}.`);
+      dealname = `AI agent deal - ${email || 'no-email'}`;
+    }
 
     // C) Neither Twilio nor updatable latest → CREATE new
     const { data } = await axios.post(
       `${HUB_URL}/deals`,
       {
-        properties: { dealname: `Webpage deal - ${email || 'no-email'}`, ...dealProps },
+        properties: { dealname: dealname, ...dealProps },
         associations: [
           {
             to: { id: contactId },

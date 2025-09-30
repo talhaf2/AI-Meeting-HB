@@ -25,7 +25,9 @@ exports.webapge = async (req, res) => {
             dealname,
             // Twillio created contact and deal.
             twillio_contact,
-            twillio_deal
+            twillio_deal,
+            //for Retell - to check if it is booked via retell or not
+            retell_appointment_source
 
         } = req.body;
 
@@ -118,6 +120,7 @@ exports.webapge = async (req, res) => {
         // });
 
         const dealResult = await createOrUpdateDeal({
+            retell_appointment_source,
             shouldUpdate: hasInquiry,
             twilioDealId: twillio_deal || null,    // 👈 authoritative if present
             latestDealId: hs_object_id_deal || null,
