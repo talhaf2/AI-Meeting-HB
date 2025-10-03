@@ -222,7 +222,7 @@ exports.bookMeeting = async (req, res) => {
       }
     });
     try {
-      const resMessage = await sendTwilioSMS(phone_fallback, `Your meeting is booked for ${DateTime.fromISO(formattedStartTime).setZone(DEFAULT_TIMEZONE).toLocaleString(DateTime.DATETIME_FULL)}. Check your email (${email}) for details.`, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      const resMessage = await sendTwilioSMS(phone_fallback, `Your meeting is booked for ${DateTime.fromISO(formattedStartTime).setZone(DEFAULT_TIMEZONE).toLocaleString(DateTime.DATETIME_FULL)}. A project manager will reach out to you to discuss your project.`, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
       console.log("Twilio response: ", resMessage);
     } catch (twilioError) {
       console.error("Twilio SMS error: ", twilioError);
@@ -643,7 +643,7 @@ exports.webhookRetell = async (req, res) => {
 
     // Send Twilio SMS
     const smsBody = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
-      https://prostructengineering.com/schedule-consultation/`;
+      https://prostructengineering.com/schedule-consultation1/`;
 
     try {
       await sendTwilioSMS(phone, smsBody, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
