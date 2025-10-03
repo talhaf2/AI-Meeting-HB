@@ -5,10 +5,10 @@ const meetingController = require('../controllers/meetingController');
 // Make sure these are all functions!
 router.get('/availability', meetingController.getAvailability);
 router.post('/book', meetingController.bookMeeting);
+
+router.post('/webhook-retell', meetingController.webhookRetell);
 router.post('/webhook', meetingController.webhookBland);
 
-
-router.post('/webpage', meetingController.webapge);
 
 router.post('/test', meetingController.test);
 

@@ -49,6 +49,31 @@ const hasMinusSevenOffset = (timeStr) => {
   return timeStr.endsWith('-07:00');
 };
 
+async function sendTwilioSMS(to, body, from, accountSid, authToken) {
+  // Import the twilio module inside the function
+
+  // Create a client with the provided credentials
+  const client = twilio(accountSid, authToken);
+
+  console.log(`Message sent successfully!`);
+
+  // Return the promise directly
+  return client.messages
+    .create({
+      body: body,
+      to: to,
+      from: from,
+    })
+    .then((message) => {
+      console.log(`Message sent successfully! SID: ${message.sid}`);
+      return message;
+    })
+    .catch((error) => {
+      console.error("Error sending message:", error);
+      throw error;
+    });
+}
+
 // Helper: Fetch availability for a given month offset
 async function fetchAvailability(slug, monthoffset) {
   const url = `https://api.hubapi.com/scheduler/v3/meetings/meeting-links/book/availability-page/${encodeURIComponent(slug)}?timezone=${encodeURIComponent(DEFAULT_TIMEZONE)}&monthOffset=${monthoffset}`;
@@ -146,7 +171,7 @@ exports.bookMeeting = async (req, res) => {
 
     let phone_fallback = phone // Fallback phone number if not provided
     if (call_type === "web_call") {
-      phone_fallback = "923416983857"
+      phone_fallback = "+16504576077"
     }
 
     let slug = getSlugFromSelection(userRole, userNeed)
@@ -196,6 +221,13 @@ exports.bookMeeting = async (req, res) => {
         'Content-Type': 'application/json'
       }
     });
+    try {
+      const resMessage = await sendTwilioSMS(phone_fallback, `Your meeting is booked for ${DateTime.fromISO(formattedStartTime).setZone(DEFAULT_TIMEZONE).toLocaleString(DateTime.DATETIME_FULL)}. Check your email (${email}) for details.`, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+      console.log("Twilio response: ", resMessage);
+    } catch (twilioError) {
+      console.error("Twilio SMS error: ", twilioError);
+    }
+
 
     res.json({ data: response.data, message: 1 });
   } catch (error) {
@@ -216,7 +248,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
 
   try {
     let searchResp;
-    if (variables.Email !== undefined) {
+    if (variables.Email !== undefined && variables.Email !== null && variables.Email.trim() !== '') {
       searchResp = await axios.post(
 
         'https://api.hubapi.com/crm/v3/objects/contacts/search',
@@ -492,80 +524,6 @@ async function createNoteForContact(contactId, noteContent, recording_url) {
   }
 }
 
-async function sendTwilioSMS(to, body, from, accountSid, authToken) {
-  // Import the twilio module inside the function
-
-  // Create a client with the provided credentials
-  const client = twilio(accountSid, authToken);
-
-  console.log(`Message sent successfully!`);
-
-  // Return the promise directly
-  return client.messages
-    .create({
-      body: body,
-      to: to,
-      from: from,
-    })
-    .then((message) => {
-      console.log(`Message sent successfully! SID: ${message.sid}`);
-      return message;
-    })
-    .catch((error) => {
-      console.error("Error sending message:", error);
-      throw error;
-    });
-}
-
-async function notifyPMbyEmail(subject, Name, Email, from, Location) {
-  try {
-
-    if (Email) subject += ` - ${Email}`;
-
-    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    // Determine if we have any user info
-    const hasDetails = Name || Email || Location || from;
-
-    let html = `<p><b>Details we fetched from the call: </b></p><p>${time}</p>`;
-    let textParts = [`NEW`, `Time: ${time}`];
-
-    if (hasDetails) {
-      if (Name) {
-        html += `<p><b>Name:</b> ${Name}</p>`;
-        textParts.push(`Name: ${Name}`);
-      }
-      if (Location) {
-        html += `<p><b>Location:</b> ${Location}</p>`;
-        textParts.push(`Location: ${Location}`);
-      }
-      if (from) {
-        html += `<p><b>From:</b> ${from}</p>`;
-        textParts.push(`From: ${from}`);
-      }
-      if (Email) {
-        html += `<p><b>Email:</b> ${Email}</p>`;
-        textParts.push(`Email: ${Email}`);
-      }
-    } else {
-      html += `<p><i>We were unable to get any details.</i></p>`;
-      textParts.push(`We were unable to get any details.`);
-    }
-
-    const text = textParts.join('\n');
-
-    await sendEmail({
-      to: 'talha.kh58@gmail.com',
-      subject,
-      text,
-      html,
-    });
-
-    console.log('Notification email sent to PM.');
-  } catch (error) {
-    console.error('Error sending PM notification:', error);
-  }
-}
 
 
 // canonical list (exact spellings)
@@ -626,8 +584,184 @@ function normalizeInput(input = '', allowedList) {
   return ''; // no match
 }
 
+// Main webhook handler for Retell AI
+exports.webhookRetell = async (req, res) => {
+  try {
+    console.log("Retell webhook received:", JSON.stringify(req.body, null, 2));
+
+    // Only process call_analyzed events as they contain the complete call data
+    if (!req.body.event || req.body.event !== 'call_analyzed') {
+      return res.json({ message: `Event ${req.body.event || 'unknown'} received but not processed` });
+    }
+
+    const callData = req.body.call;
+    if (!callData || !callData.collected_dynamic_variables) {
+      return res.json({ message: 'No call data or dynamic variables found' });
+    }
+
+    const dynamicVars = callData.collected_dynamic_variables;
+
+    // Check if meeting was booked
+    const meetingBooked = dynamicVars.meetingBooked;
+
+    if (meetingBooked || meetingBooked === true || meetingBooked === "true") {
+      console.log("Meeting was booked, no action needed");
+      return res.json({ message: 'Meeting was booked successfully, no action taken' });
+    }
+
+    // Meeting was not booked, proceed with SMS and contact/deal creation
+    console.log("Meeting was not booked, proceeding with follow-up actions");
+
+    // Extract data with fallbacks for missing values
+    const name = dynamicVars.name || '';
+    const email = dynamicVars.email || '';
+    const location = dynamicVars.Location || '';
+    const userRoleValue = dynamicVars.userRoleValue || '';
+    const projectType = dynamicVars.project_type || '';
+    const description = dynamicVars.description || '';
+
+    // Get phone number - use from_number for actual calls, fallback for web calls
+    const phone = dynamicVars.from_number || "+16504576077"; // phone_fallback for web calls
+
+    // Use phone number as name if name is not available
+    const contactName = name || phone;
+
+    // Get call summary and recording
+    const summary = callData.call_analysis?.call_summary || callData.transcript || '';
+    const recordingUrl = callData.recording_url || '';
+
+    console.log("Extracted data:", {
+      contactName,
+      email,
+      location,
+      userRoleValue,
+      projectType,
+      description,
+      phone,
+      meetingBooked
+    });
+
+    // Send Twilio SMS
+    const smsBody = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
+      https://prostructengineering.com/schedule-consultation/`;
+
+    try {
+      await sendTwilioSMS(phone, smsBody, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      console.log("SMS sent successfully to:", phone);
+    } catch (smsError) {
+      console.error("Error sending SMS:", smsError);
+      // Continue with contact/deal creation even if SMS fails
+    }
+
+    // Normalize project type and user role
+    const cleanProjectType = normalizeInput(projectType, ALLOWED_PROJECT_TYPES);
+    const cleanUserRole = normalizeInput(userRoleValue, ALLOWED_USER_ROLES);
+
+    // Create contact and deal
+    let result;
+    try {
+      result = await createOrUpdateContactAndDeal(
+        {
+          Name: contactName,
+          Email: email,
+          Location: location,
+          cleanUserRole
+        },
+        phone,
+        null, // preferred_appointment_start_time (not available since meeting wasn't booked)
+        cleanProjectType,
+        description
+      );
+
+      console.log("Contact and deal created successfully:", {
+        contactId: result.contact.id,
+        dealId: result.deal.id
+      });
+
+    } catch (contactError) {
+      console.error("Error creating contact/deal:", contactError);
+      return res.status(500).json({
+        error: 'Failed to create contact/deal',
+        details: contactError.message
+      });
+    }
+
+    // Create note for the contact using summary
+    if (summary && result.contact?.id) {
+      try {
+        await createNoteForContact(result.contact.id, summary, recordingUrl);
+        console.log("Note created successfully for contact:", result.contact.id);
+      } catch (noteError) {
+        console.error("Error creating note:", noteError);
+        // Don't fail the entire request if note creation fails
+      }
+    }
+
+    res.json({
+      contact: result.contact,
+      deal: result.deal,
+      message: 'Contact and deal processed successfully. SMS sent to user.'
+    });
+
+  } catch (error) {
+    console.error("Error in webhookRetell:", error);
+    res.status(error.response?.status || 500).json({
+      error: error.response?.data || error.message
+    });
+  }
+};
 
 
+
+async function notifyPMbyEmail(subject, Name, Email, from, Location) {
+  try {
+
+    if (Email) subject += ` - ${Email}`;
+
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Determine if we have any user info
+    const hasDetails = Name || Email || Location || from;
+
+    let html = `<p><b>Details we fetched from the call: </b></p><p>${time}</p>`;
+    let textParts = [`NEW`, `Time: ${time}`];
+
+    if (hasDetails) {
+      if (Name) {
+        html += `<p><b>Name:</b> ${Name}</p>`;
+        textParts.push(`Name: ${Name}`);
+      }
+      if (Location) {
+        html += `<p><b>Location:</b> ${Location}</p>`;
+        textParts.push(`Location: ${Location}`);
+      }
+      if (from) {
+        html += `<p><b>From:</b> ${from}</p>`;
+        textParts.push(`From: ${from}`);
+      }
+      if (Email) {
+        html += `<p><b>Email:</b> ${Email}</p>`;
+        textParts.push(`Email: ${Email}`);
+      }
+    } else {
+      html += `<p><i>We were unable to get any details.</i></p>`;
+      textParts.push(`We were unable to get any details.`);
+    }
+
+    const text = textParts.join('\n');
+
+    await sendEmail({
+      to: 'talha.kh58@gmail.com',
+      subject,
+      text,
+      html,
+    });
+
+    console.log('Notification email sent to PM.');
+  } catch (error) {
+    console.error('Error sending PM notification:', error);
+  }
+}
 // Main webhook handler
 exports.webhookBland = async (req, res) => {
   try {
@@ -793,238 +927,4 @@ exports.test = async (req, res) => {
   }
 };
 
-
-
-
-
-const HUB_URL = 'https://api.hubapi.com/crm/v3/objects';
-const headers = {
-  Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-  'Content-Type': 'application/json',
-};
-
-exports.webapge = async (req, res) => {
-  try {
-    const {
-      email,
-      firstname,
-      lastname,
-      hs_object_id, // HubSpot Contact ID
-      engagements_last_meeting_booked,
-      full_project_address_webpage_meeting,
-      type_of_project,
-      your_phone_number,
-      project_role_meeting, // homeowner/ AEC professional
-      project_role_hs_meeting, // when user select AEC as a project role, other option after selection,
-      project_description_webpage_meeting,
-    } = req.body;
-
-    // Validate required input
-    if (!email && !hs_object_id) {
-      return res.status(400).json({ error: "Missing 'email' or 'hs_object_id'" });
-    }
-
-    // 1. Ensure contact exists or retrieve via hs_object_id
-    let contactId = hs_object_id;
-    let contactData;
-
-    if (!contactId && email) {
-      const search = await axios.post(
-        `${HUB_URL}/contacts/search`,
-        {
-          filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
-          properties: ['firstname', 'lastname', 'email'],
-        },
-        { headers }
-      );
-      const found = search.data.results?.[0];
-      if (found) {
-        contactId = found.id;
-      }
-    }
-
-    let project_role;
-
-    if (project_role_meeting === "Homeowner") {
-      project_role = "Homeowner"
-    } else {
-      project_role = project_role_hs_meeting
-    }
-
-    if (!contactId) {
-      const create = await axios.post(
-        `${HUB_URL}/contacts`,
-        { properties: { email, firstname, lastname, phone: your_phone_number, project_role__sales_rep: project_role } },
-        { headers }
-      );
-      contactId = create.data.id;
-      contactData = create.data;
-    } else {
-      console.log('in');
-
-      const update = await axios.patch(
-        `${HUB_URL}/contacts/${contactId}`,
-        { properties: { firstname, lastname, email, phone: your_phone_number, project_role__sales_rep: project_role } },
-        { headers }
-      );
-      contactData = update.data;
-    }
-
-    // 2. Fetch associated deals
-    const assoc = await axios.get(
-      `${HUB_URL}/contacts/${contactId}/associations/deals`,
-      { headers }
-    );
-
-    const dealIds = assoc.data.results.map(r => r.id);
-
-    console.log("dealIds: ", dealIds);
-
-    // 3. Pick the most recent deal
-    // let latestDealId = null;
-    // let latestDealData = null;
-
-    // if (dealIds.length) {
-    //   const deals = await Promise.all(
-    //     dealIds.map(id =>
-    //       axios.get(`${HUB_URL}/deals/${id}?properties=createdate,appointment_set_,customer_success_manager,project_type,deal_address__if_different_from_contact_address_`, { headers })
-    //     )
-    //   );
-    //   deals.sort((a, b) =>
-    //     new Date(b.data.properties.createdate) - new Date(a.data.properties.createdate)
-    //   );
-    //   latestDealId = deals[0].data.id;
-    //   latestDealData = deals[0].data.properties;
-    // }
-
-    let latestDealId = null;
-    let latestDealData = null;
-    let shouldUpdateExistingDeal = false;
-
-    if (dealIds.length) {
-      const deals = await Promise.all(
-        dealIds.map(id =>
-          axios.get(`${HUB_URL}/deals/${id}?properties=dealname,createdate,appointment_set_,customer_success_manager,project_type,deal_address__if_different_from_contact_address_`, { headers })
-        )
-      );
-
-      // Sort by most recent
-      deals.sort((a, b) => Number(b.data.id) - Number(a.data.id));
-
-
-      const mostRecent = deals[0];
-      latestDealId = mostRecent.data.id;
-      latestDealData = mostRecent.data.properties;
-
-      console.log("latestDealData: ", latestDealData);
-      const createdDate = new Date(latestDealData.createdate);
-      const now = new Date();
-      const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
-
-      const nameIncludesInquiry = latestDealData.dealname?.toLowerCase().includes("inquiry");
-      console.log("nameIncludesInquiry; ", nameIncludesInquiry);
-
-      const wasCreatedRecently = createdDate > twoDaysAgo;
-
-      shouldUpdateExistingDeal = nameIncludesInquiry && wasCreatedRecently;
-    }
-
-    console.log("latestDealId: ", latestDealId);
-
-    // Get ownerId for deal assignment
-    const OwnerId = await getMeetingHostId(contactId);
-    console.log("OwnerId", OwnerId);
-    const CSMname = await fetchCSMName(OwnerId)
-
-    console.log(CSMname);
-    const contactName = `${firstname} ${lastname}`;
-    const role = project_role_meeting === 'AEC professional' && project_role_hs_meeting
-      ? `${project_role_meeting} (${project_role_hs_meeting})`
-      : project_role_meeting;
-
-    // Convert only start time
-    const start = DateTime.fromMillis(engagements_last_meeting_booked, { zone: 'America/Los_Angeles' });
-    const formattedTime = `${start.toFormat('h:mma')}, ${start.toFormat('cccc, LLLL d, yyyy')}`;
-    console.log(formattedTime);
-
-    const msg =
-      `<https://app.hubspot.com/contacts/45924609/record/0-1/${hs_object_id}>\n\n` +
-      `From Huspot Appointments\n` +
-      `Appointment set for *${CSMname}*\n` +
-      `Date/time: *${formattedTime}*\n\n` +
-      `Scope of Work: ${project_description_webpage_meeting || 'N/A'}\n\n` +
-      `Name: ${contactName}\n` +
-      `Number: ${your_phone_number || 'N/A'}\n` +
-      `Email: ${email || 'N/A'}\n` +
-      `Address: ${full_project_address_webpage_meeting || 'N/A'}`;
-
-    const post = await sendSlackMessage(msg);
-
-    // Build properties to update (only if current value is empty)
-    const dealProps = {
-      pipeline: "default",
-      deal_association_type: "Primary Deal",
-      project_description: project_description_webpage_meeting,
-      dealstage: "contractsent",
-      appointment_set_: new Date(Number(engagements_last_meeting_booked)).toISOString(),
-      customer_success_manager: OwnerId,
-      project_type: type_of_project,
-      deal_address__if_different_from_contact_address_: full_project_address_webpage_meeting
-    };
-
-    console.log("OwnerId");
-
-    console.log("shouldUpdateExistingDeal:", shouldUpdateExistingDeal);
-
-    let dealResult;
-
-    // if (latestDealId && Object.keys(dealProps).length > 0) {
-    if (shouldUpdateExistingDeal) {
-      console.log("in first");
-      const updatedDeal = await axios.patch(
-        `${HUB_URL}/deals/${latestDealId}`,
-        { properties: dealProps },
-        { headers }
-      );
-      dealResult = updatedDeal.data;
-    } else if (!latestDealId || !shouldUpdateExistingDeal) {
-      console.log("in second");
-
-      const createdDeal = await axios.post(
-        `${HUB_URL}/deals`,
-        {
-          properties: {
-            dealname: `Webpage deal - ${email}`,
-            pipeline: "default",
-            deal_association_type: "Primary Deal",
-            project_description: project_description_webpage_meeting,
-            dealstage: "contractsent",
-            appointment_set_: new Date(Number(engagements_last_meeting_booked)).toISOString(),
-            customer_success_manager: OwnerId,
-            project_type: type_of_project,
-            deal_address__if_different_from_contact_address_: full_project_address_webpage_meeting
-          },
-          associations: [
-            {
-              to: { id: contactId },
-              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }],
-            },
-          ],
-        },
-        { headers }
-      );
-      dealResult = createdDeal.data;
-    } else {
-      console.log("Nothing updated, deal was not blank");
-      // No update needed
-      dealResult = { message: 'No deal properties were empty. No update performed.' };
-    }
-
-
-    return res.json({ contact: contactData, deal: dealResult });
-  } catch (err) {
-    console.error('Webhook error', err.response?.data || err);
-    res.status(500).json({ error: err.message });
-  }
-};
 
