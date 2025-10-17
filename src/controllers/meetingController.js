@@ -163,7 +163,7 @@ exports.bookMeeting = async (req, res) => {
       call_type
     } = req.body;
 
-    console.log("in");
+    console.log(req.body);
     
 
     let phone_fallback = phone // Fallback phone number if not provided
@@ -584,7 +584,6 @@ function normalizeInput(input = '', allowedList) {
 // Main webhook handler for Retell AI
 exports.webhookRetell = async (req, res) => {
   try {
-    console.log("Retell webhook received:", JSON.stringify(req.body, null, 2));
 
     // Only process call_analyzed events as they contain the complete call data
     if (!req.body.event || req.body.event !== 'call_analyzed') {
