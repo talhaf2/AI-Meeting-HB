@@ -166,12 +166,6 @@ exports.bookMeeting = async (req, res) => {
     console.log("in");
     
 
-    if (userRole === undefined || userRole === null ||
-      userNeed === undefined || userNeed === null ||
-      !startTime || !endTime || !firstName || !email) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
     let phone_fallback = phone // Fallback phone number if not provided
     if (call_type === "web_call" || phone === "" || phone === undefined || phone === null) {
       phone_fallback = "+16504576077"
