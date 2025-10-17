@@ -161,7 +161,10 @@ exports.bookMeeting = async (req, res) => {
       Location,
       phone,
       call_type
-    } = req.body.args;
+    } = req.body;
+
+    console.log("in");
+    
 
     if (userRole === undefined || userRole === null ||
       userNeed === undefined || userNeed === null ||
@@ -170,7 +173,7 @@ exports.bookMeeting = async (req, res) => {
     }
 
     let phone_fallback = phone // Fallback phone number if not provided
-    if (call_type === "web_call") {
+    if (call_type === "web_call" || phone === "" || phone === undefined || phone === null) {
       phone_fallback = "+16504576077"
     }
 
