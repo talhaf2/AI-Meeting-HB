@@ -161,9 +161,9 @@ exports.bookMeeting = async (req, res) => {
       Location,
       phone,
       call_type
-    } = req.body;
+    } = req.body.args;
 
-    console.log(req.body);
+    console.log(req.body.args);
     
 
     let phone_fallback = phone // Fallback phone number if not provided
