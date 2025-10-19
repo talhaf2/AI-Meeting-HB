@@ -163,12 +163,12 @@ exports.bookMeeting = async (req, res) => {
       call_type
     } = req.body.args;
 
-    console.log(req.body.args);
+    console.log(req.body);
     
 
-    let phone_fallback = phone // Fallback phone number if not provided
+    let phone_fallback = req.body.call.from_number || phone // Fallback phone number if not provided
     if (call_type === "web_call" || phone === "" || phone === undefined || phone === null) {
-      phone_fallback = "+16504576077"
+      phone_fallback = "+16666666666"
     }
 
     let slug = getSlugFromSelection(userRole, userNeed)
