@@ -167,7 +167,7 @@ exports.bookMeeting = async (req, res) => {
     
 
     let phone_fallback = req.body.call.from_number || phone // Fallback phone number if not provided
-    if (call_type === "web_call" || phone === "" || phone === undefined || phone === null) {
+    if (call_type === "web_call" || phone_fallback === "" || phone_fallback === undefined || phone_fallback === null) {
       phone_fallback = "+16666666666"
     }
 
