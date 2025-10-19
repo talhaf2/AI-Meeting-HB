@@ -620,7 +620,7 @@ exports.webhookRetell = async (req, res) => {
     const description = dynamicVars.description || '';
 
     // Get phone number - use from_number for actual calls, fallback for web calls
-    const phone = callData.from_number || "+16504576077"; // phone_fallback for web calls
+    const phone = callData.from_number || "+16666666666"; // phone_fallback for web calls
 
     // Use phone number as name if name is not available
     const contactName = name || phone;
