@@ -595,6 +595,9 @@ exports.webhookRetell = async (req, res) => {
       return res.json({ message: 'No call data or dynamic variables found' });
     }
 
+    console.log("callData: ", callData);
+    
+
     const dynamicVars = callData.collected_dynamic_variables;
 
     // Check if meeting was booked
@@ -617,7 +620,7 @@ exports.webhookRetell = async (req, res) => {
     const description = dynamicVars.description || '';
 
     // Get phone number - use from_number for actual calls, fallback for web calls
-    const phone = dynamicVars.from_number || "+16504576077"; // phone_fallback for web calls
+    const phone = callData.from_number || "+16504576077"; // phone_fallback for web calls
 
     // Use phone number as name if name is not available
     const contactName = name || phone;
