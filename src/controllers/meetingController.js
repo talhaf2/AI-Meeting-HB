@@ -3,7 +3,7 @@ const { DateTime } = require('luxon');
 const { sendEmail } = require('../utils/email');
 const twilio = require('twilio');
 const { json } = require('express');
-const { sendSlackMessage } = require('../services/slackService');
+const { sendSlackMessage, sendCallSlackMessage } = require('../services/slackService');
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Los_Angeles'; // Pacific Time
@@ -602,6 +602,24 @@ exports.webhookRetell = async (req, res) => {
 
     // Check if meeting was booked
     const meetingBooked = dynamicVars.meetingBooked;
+
+let msg =  
+  `*Recording URL:* ${callData.recording_url}` +
+  `\n*Call Summary:* ${callData.call_analysis.call_summary}` +
+  `\n*Meeting Booked:* ${meetingBooked}` +
+  `\n\n*From:* ${callData.from_number}` +
+  `\n*Name:* ${dynamicVars.name || 'N/A'}` +
+  `\n*Email:* ${dynamicVars.email || 'N/A'}` +
+  `\n*Location:* ${dynamicVars.Location || 'N/A'}` +
+  `\n*User Role:* ${dynamicVars.userRoleValue || 'N/A'}` +
+  `\n*Project Type:* ${dynamicVars.project_type || 'N/A'}` +
+  `\n*Description:* ${dynamicVars.description || 'N/A'}` +
+  `\n\n*Call ID:* ${callData.call_id}`;
+
+
+
+    const sent = await sendCallSlackMessage(msg);
+    console.log("Slack message sent:", sent.data.ok);
 
     if (meetingBooked || meetingBooked === true || meetingBooked === "true") {
       console.log("Meeting was booked, no action needed");

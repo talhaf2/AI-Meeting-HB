@@ -1,6 +1,6 @@
 import axios from "axios";
 import PQueue from "p-queue";
-import { SLACK_BOT_TOKEN, SLACK_CHANNEL_ID } from "../../config/env.js";
+import { SLACK_BOT_TOKEN, SLACK_CHANNEL_ID, CALL_SLACK_CHANNEL_ID } from "../../config/env.js";
 import { withRetry } from "../utils/retry.js";
 
 const queue = new PQueue({ concurrency: 1, interval: 1000 });
@@ -12,6 +12,27 @@ export async function sendSlackMessage(text) {
         "https://slack.com/api/chat.postMessage",
         {
           channel: SLACK_CHANNEL_ID,
+          text,
+          mrkdwn: true,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+    )
+  );
+}
+
+export async function sendCallSlackMessage(text) {
+  return queue.add(() =>
+    withRetry(() =>
+      axios.post(
+        "https://slack.com/api/chat.postMessage",
+        {
+          channel: CALL_SLACK_CHANNEL_ID,
           text,
           mrkdwn: true,
         },
