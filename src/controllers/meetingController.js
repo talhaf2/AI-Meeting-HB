@@ -43,6 +43,8 @@ const getSlugFromSelection = (role, intent) => {
     return 'tfarooq/aec-professional';
   }
 
+  // Fallback to a safe default slug to ensure meeting can still be booked
+  return 'tfarooq/homeowner-other';
 };
 
 const hasMinusSevenOffset = (timeStr) => {
@@ -173,14 +175,34 @@ exports.bookMeeting = async (req, res) => {
 
     let slug = getSlugFromSelection(userRole, userNeed)
 
-    // Append "-07:00" only if no timezone offset present
-    const formattedStartTime = hasMinusSevenOffset(startTime)
-      ? startTime
-      : startTime + '-07:00';
+    // Normalize provided times to ISO8601 with timezone offset
+    const toISOWithZone = (input) => {
+      if (input === undefined || input === null || input === '') return undefined;
+      // If numeric-like (epoch ms)
+      if (typeof input === 'number' || (typeof input === 'string' && /^\d+$/.test(input))) {
+        const dt = DateTime.fromMillis(Number(input), { zone: DEFAULT_TIMEZONE });
+        return dt.isValid ? dt.toISO({ includeOffset: true, suppressMilliseconds: true }) : undefined;
+      }
+      // If ISO-like string, parse and ensure zone
+      const dtParsed = DateTime.fromISO(String(input), { setZone: true });
+      if (dtParsed.isValid) {
+        // If no offset in the string, apply DEFAULT_TIMEZONE
+        const dtWithZone = dtParsed.offset === 0 && !/([Zz]|[+\-]\d{2}:?\d{2})$/.test(String(input))
+          ? dtParsed.setZone(DEFAULT_TIMEZONE)
+          : dtParsed;
+        return dtWithZone.toISO({ includeOffset: true, suppressMilliseconds: true });
+      }
+      // Fallback: try parsing as local and set zone
+      const dtLocal = DateTime.fromJSDate(new Date(String(input))).setZone(DEFAULT_TIMEZONE);
+      return dtLocal.isValid ? dtLocal.toISO({ includeOffset: true, suppressMilliseconds: true }) : undefined;
+    };
 
-    const formattedEndTime = hasMinusSevenOffset(endTime)
-      ? endTime
-      : endTime + '-07:00';
+    const formattedStartTime = toISOWithZone(startTime);
+    const formattedEndTime = toISOWithZone(endTime);
+
+    // Normalize free-text fields to allowed lists, fall back to empty if not matched
+    const cleanProjectType = normalizeInput(project_type || '', ALLOWED_PROJECT_TYPES);
+    const cleanUserRole = normalizeInput(userRoleValue || '', ALLOWED_USER_ROLES);
 
     const payload = {
       slug,
@@ -202,9 +224,9 @@ exports.bookMeeting = async (req, res) => {
         },
         {
           name: "type_of_project",
-          value: project_type || " "
+          value: cleanProjectType || ""
         },
-        { name: "project_role__sales_rep", value: userRoleValue || " " },
+        { name: "project_role__sales_rep", value: cleanUserRole || "" },
         { name: "retell_appointment_source", value: "true" || " " },
         { name: "project_description_webpage_meeting", value: description || " " }
 
@@ -486,7 +508,7 @@ async function updateContactAndCreateDeal(contactId, variables, from, preferred_
   return { contact: contactUpdateResp.data, deal: dealCreateResp.data };
 }
 
-async function createNoteForContact(contactId, noteContent, recording_url) {
+async function createNoteForContact(contactId, dealId, noteContent, recording_url) {
   const notePayload = {
     engagement: {
       active: true,
@@ -495,7 +517,7 @@ async function createNoteForContact(contactId, noteContent, recording_url) {
     associations: {
       contactIds: [contactId],
       companyIds: [],
-      dealIds: [],
+      dealIds: [dealId],
       ownerIds: []
     },
     metadata: {
@@ -706,7 +728,7 @@ let msg =
     // Create note for the contact using summary
     if (summary && result.contact?.id) {
       try {
-        await createNoteForContact(result.contact.id, summary, recordingUrl);
+        await createNoteForContact(result.contact.id, result.deal.id, summary, recordingUrl);
         console.log("Note created successfully for contact:", result.contact.id);
       } catch (noteError) {
         console.error("Error creating note:", noteError);
