@@ -224,11 +224,11 @@ exports.bookMeeting = async (req, res) => {
         },
         {
           name: "type_of_project",
-          value: cleanProjectType || ""
+          value: cleanProjectType || "Other"
         },
-        { name: "project_role__sales_rep", value: cleanUserRole || "" },
-        { name: "retell_appointment_source", value: "true" || " " },
-        { name: "project_description_webpage_meeting", value: description || " " }
+        { name: "project_role__sales_rep", value: cleanUserRole || "Unknown" },
+        { name: "retell_appointment_source", value: "true" },
+        { name: "project_description_webpage_meeting", value: description || "N/A" }
 
       ]
     };
@@ -546,22 +546,52 @@ async function createNoteForContact(contactId, dealId, noteContent, recording_ur
 
 
 // canonical list (exact spellings)
+// const ALLOWED_PROJECT_TYPES = [
+//   'Load Bearing Wall',
+//   'Addition',
+//   'Remodel',
+//   'Foundation',
+//   'OSE (Structural)',
+//   'ADU',
+//   'New Home',
+//   'Retaining Wall',
+//   'Outdoor Living Space (Decks/Patio)',
+//   'T24',
+//   'Civil Engineering',
+//   'Deck/Patio/Patch',
+//   'LBW/R',
+//   'Legalization',
+//   'New Custom Home',
+//   'Retrofit',
+//   'Roof',
+//   'Special Inspection',
+//   'Anchorage',
+//   'As-Builts',
+//   'Redline and Calcs',
+//   '[Upsell] On-Site Construction Admin.',
+//   '[CO] Other Construction Admin.',
+//   'PM As a Service',
+//   'Pool',
+//   'Ground Up Construction',
+// ];
+
 const ALLOWED_PROJECT_TYPES = [
-  'Load Bearing Wall',
+  'OSE (Structural)',
+  'New Custom Home',
+  'New Home',
+  'ADU',
+  'Addition/Remodel',
   'Addition',
   'Remodel',
+  'Load Bearing Wall',
   'Foundation',
-  'OSE (Structural)',
-  'ADU',
-  'New Home',
   'Retaining Wall',
-  'Outdoor Living Space (Decks/Patio)',
+  'Outdoor Living Space (Decks/Patios/Pergolas etc.)',
   'T24',
   'Civil Engineering',
   'Deck/Patio/Patch',
-  'LBW/R',
+  'LBWR',
   'Legalization',
-  'New Custom Home',
   'Retrofit',
   'Roof',
   'Special Inspection',
@@ -572,7 +602,9 @@ const ALLOWED_PROJECT_TYPES = [
   '[CO] Other Construction Admin.',
   'PM As a Service',
   'Pool',
-  'Ground Up Construction'
+  'Ground Up Construction',
+  'Commercial',
+  'Other',
 ];
 
 const ALLOWED_USER_ROLES = [
@@ -582,7 +614,7 @@ const ALLOWED_USER_ROLES = [
   'Contractor',
   'Developer',
   'Realtor/Property Manager',
-  'Others'
+  'Unknown'
 ];
 
 /**
@@ -655,9 +687,9 @@ let msg =
     const name = dynamicVars.name || '';
     const email = dynamicVars.email || '';
     const location = dynamicVars.Location || '';
-    const userRoleValue = dynamicVars.userRoleValue || '';
-    const projectType = dynamicVars.project_type || '';
-    const description = dynamicVars.description || '';
+    const userRoleValue = dynamicVars.userRoleValue;
+    const projectType = dynamicVars.project_type;
+    const description = dynamicVars.description || 'N/A';
 
     // Get phone number - use from_number for actual calls, fallback for web calls
     const phone = callData.from_number || "+16666666666"; // phone_fallback for web calls
