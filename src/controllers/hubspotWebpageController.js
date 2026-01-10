@@ -5,6 +5,19 @@ const { sendSlackMessage } = require('../services/slackService');
 const { formatAppointmentTime } = require('../utils/time');
 const logger = require('../utils/logger');
 const { mergeContacts } = require('../hubspot/contactService');
+const axios = require('axios');
+const { HUB_URL, headers } = require('../../config/constants');
+
+// Helper function to get deal stage
+async function getDealStage(dealId) {
+    try {
+        const { data } = await axios.get(`${HUB_URL}/deals/${dealId}?properties=dealstage`, { headers });
+        return data.properties?.dealstage || null;
+    } catch (err) {
+        logger.error(`Failed to fetch deal stage for deal ${dealId}`, err.response?.data || err);
+        return null;
+    }
+}
 
 exports.webapge = async (req, res) => {
     try {
@@ -122,7 +135,23 @@ exports.webapge = async (req, res) => {
         //     contactId
         // });
 
-        const dealResult = await createOrUpdateDeal({
+        // Check if deal should be updated - skip if current dealstage is "199684762"
+        const dealIdToCheck = twillio_deal || hs_object_id_deal;
+        let dealResult = null;
+
+        if (dealIdToCheck) {
+            const currentDealStage = await getDealStage(dealIdToCheck);
+            if (currentDealStage === "199684762") {
+                logger.info(`Skipping deal update for deal ${dealIdToCheck} - current stage is "199684762"`);
+                // Return early without updating the deal
+                return res.json({ 
+                    contact: contactData, 
+                    deal: { id: dealIdToCheck, message: 'Deal update skipped - stage is "199684762"' }
+                });
+            }
+        }
+
+        dealResult = await createOrUpdateDeal({
             retell_appointment_source,
             shouldUpdate: hasInquiry,
             twilioDealId: twillio_deal || null,    // 👈 authoritative if present
@@ -188,6 +217,18 @@ exports.webapgeOutcomeChange = async (req, res) => {
 
 
         await sendSlackMessage(msg);
+
+        // Check if deal should be updated - skip if current dealstage is "199684762"
+        if (hs_object_id_deal) {
+            const currentDealStage = await getDealStage(hs_object_id_deal);
+            if (currentDealStage === "199684762") {
+                logger.info(`Skipping deal update for deal ${hs_object_id_deal} - current stage is "199684762"`);
+                // Return early without updating the deal
+                return res.json({ 
+                    deal: { id: hs_object_id_deal, message: 'Deal update skipped - stage is "199684762"' }
+                });
+            }
+        }
 
         const dealProps = {
             dealstage: dealstage,
