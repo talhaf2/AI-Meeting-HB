@@ -7,6 +7,15 @@ const { sendSlackMessage, sendCallSlackMessage } = require('../services/slackSer
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Los_Angeles'; // Pacific Time
+const HUBSPOT_PORTAL_ID = process.env.HUBSPOT_PORTAL_ID || '45924609';
+
+function hsContactUrl(contactId) {
+  return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-1/${contactId}`;
+}
+
+function hsDealUrl(dealId) {
+  return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-3/${dealId}`;
+}
 
 // Helper: Convert milliseconds (UTC) to ISO 8601 string in Pacific Time
 function msToPacificISO(ms) {
@@ -270,31 +279,8 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
     const email = (variables.Email || '').trim();
     const phoneDigits = String(from || '').replace(/\D/g, '');
 
-    // A) Try email first (if provided)
-    if (email !== '') {
-      searchResp = await axios.post(
-        'https://api.hubapi.com/crm/v3/objects/contacts/search',
-        {
-          filterGroups: [{
-            filters: [{
-              propertyName: 'email',
-              operator: 'EQ',
-              value: email
-            }]
-          }],
-          properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-    }
-
-    // B) If no email match (or no email provided), fallback to phone search
-    if ((!searchResp || !searchResp.data?.results || searchResp.data.results.length === 0) && phoneDigits) {
+    // A) Try phone first (if present)
+    if (phoneDigits) {
       searchResp = await axios.post(
         'https://api.hubapi.com/crm/v3/objects/contacts/search',
         {
@@ -315,20 +301,20 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
         }
       );
     }
-    console.log(variables.cleanUserRole);
-    if (searchResp.data.results && searchResp.data.results.length > 0) {
-      // Contact exists, update it
-      contactId = searchResp.data.results[0].id;
-      contactResp = await axios.patch(
-        `https://api.hubapi.com/crm/v3/objects/contacts/${contactId}`,
+
+    // B) If no phone match (or no phone provided), fallback to email search
+    if ((!searchResp || !searchResp.data?.results || searchResp.data.results.length === 0) && email !== '') {
+      searchResp = await axios.post(
+        'https://api.hubapi.com/crm/v3/objects/contacts/search',
         {
-          properties: {
-            firstname: variables.Name,
-            phone: from,
-            address: variables.Location,
-            project_role__sales_rep: variables.cleanUserRole,
-            ...(email ? { email } : {})
-          }
+          filterGroups: [{
+            filters: [{
+              propertyName: 'email',
+              operator: 'EQ',
+              value: email
+            }]
+          }],
+          properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
         },
         {
           headers: {
@@ -337,6 +323,12 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
           }
         }
       );
+    }
+    console.log(variables.cleanUserRole);
+    if (searchResp.data.results && searchResp.data.results.length > 0) {
+      // Contact exists — DO NOT update it. Just use it for deal association.
+      contactId = searchResp.data.results[0].id;
+      contactResp = { data: { id: contactId } };
     }
   } catch (err) {
     // If error is not "not found", throw
@@ -352,8 +344,8 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
       {
         properties: {
           firstname: variables.Name || from,
-          email: variables.Email,
-          phone: from,
+          ...(variables.Email ? { email: variables.Email } : {}),
+          ...(from ? { phone: from } : {}),
           address: variables.Location,
           project_role__sales_rep: variables.cleanUserRole,
         }
@@ -667,20 +659,27 @@ function normalizeInput(input = '', allowedList) {
 exports.webhookRetell = async (req, res) => {
   try {
 
+    console.log("req.body: ", req.body.event);
+
+    if (!req.body.event || req.body.event === 'call_analyzed') {
+      console.log("req.body: ", req.body);
+    }
+
     // Only process call_analyzed events as they contain the complete call data
     if (!req.body.event || req.body.event !== 'call_analyzed') {
       return res.json({ message: `Event ${req.body.event || 'unknown'} received but not processed` });
     }
 
     const callData = req.body.call;
-    if (!callData || !callData.collected_dynamic_variables) {
-      return res.json({ message: 'No call data or dynamic variables found' });
+    if (!callData) {
+      return res.json({ message: 'No call data found' });
     }
 
     console.log("callData: ", callData);
     
 
-    const dynamicVars = callData.collected_dynamic_variables;
+    // collected_dynamic_variables may be missing if the user hangs up early
+    const dynamicVars = callData.collected_dynamic_variables || {};
 
     // Check if meeting was booked
     const meetingBooked = dynamicVars.meetingBooked;
@@ -689,7 +688,7 @@ let msg =
   `*Recording URL:* ${callData.recording_url}` +
   `\n*Call Summary:* ${callData.call_analysis.call_summary}` +
   `\n*Meeting Booked:* ${meetingBooked}` +
-  `\n\n*From:* ${callData.from_number}` +
+  `\n\n*From:* ${callData.from_number || 'N/A'}` +
   `\n*Name:* ${dynamicVars.name || 'N/A'}` +
   `\n*Email:* ${dynamicVars.email || 'N/A'}` +
   `\n*Location:* ${dynamicVars.Location || 'N/A'}` +
@@ -719,11 +718,11 @@ let msg =
     const projectType = dynamicVars.project_type;
     const description = dynamicVars.description || 'N/A';
 
-    // Get phone number - use from_number for actual calls, fallback for web calls
-    const phone = callData.from_number || "+16666666666"; // phone_fallback for web calls
+    // Phone number may be missing for web_call; do not use a constant fallback for CRM identity
+    const phone = callData.from_number || "";
 
     // Use phone number as name if name is not available
-    const contactName = name || phone;
+    const contactName = name || (phone ? phone : `Web Call ${callData.call_id || ""}`.trim());
 
     // Get call summary and recording
     const summary = callData.call_analysis?.call_summary || callData.transcript || '';
@@ -783,8 +782,12 @@ let msg =
     const smsBody = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:\n${bookingUrl}`;
 
     try {
-      await sendTwilioSMS(phone, smsBody, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-      console.log("SMS sent successfully to:", phone);
+      if (phone) {
+        await sendTwilioSMS(phone, smsBody, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+        console.log("SMS sent successfully to:", phone);
+      } else {
+        console.log("No phone number on call; skipping SMS");
+      }
     } catch (smsError) {
       console.error("Error sending SMS:", smsError);
       // Continue even if SMS fails
@@ -799,6 +802,23 @@ let msg =
         console.error("Error creating note:", noteError);
         // Don't fail the entire request if note creation fails
       }
+    }
+
+    // Post Slack with created HubSpot records + booking link
+    try {
+      const bookingUrl = `https://prostructengineering.com/schedule-consultation1?c=${result?.contact?.id || ""}&d=${result?.deal?.id || ""}`;
+      const hsLinks =
+        result?.contact?.id && result?.deal?.id
+          ? `*HubSpot:* <${hsContactUrl(result.contact.id)}|Contact> | <${hsDealUrl(result.deal.id)}|Deal>`
+          : `*HubSpot:* n/a`;
+
+      const followupMsg =
+        `*AI created lead for ${name || email ||phone}*\n` +
+        `${hsLinks}\n` +
+
+      await sendCallSlackMessage(followupMsg);
+    } catch (e) {
+      console.error("Slack follow-up post failed:", e?.response?.data || e?.message || e);
     }
 
     res.json({
