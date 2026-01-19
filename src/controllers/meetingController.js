@@ -818,10 +818,9 @@ exports.webhookRetell = async (req, res) => {
           : `*HubSpot Created Records:* n/a`;
 
       const fullMsg =
-        `🤖 *AI created lead*\n` +
-        `${hsLinks}\n` +
-        `*Use this link to book an appointment:* ${bookingLinkHyper}\n\n` +
-        `${baseSlackMsg}`;
+      `${baseSlackMsg}\n` +
+      `🤖 *AI created Records in HubSpot*\n` +
+        `${hsLinks}\n`;
 
       await sendCallSlackMessage(fullMsg);
     } catch (e) {
