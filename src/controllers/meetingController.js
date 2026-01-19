@@ -257,7 +257,7 @@ exports.bookMeeting = async (req, res) => {
 
 ///WEBHOOK POST CALL FOR LOGGING CONTACT AND DEAL INTO HUBSPOT...
 // Create new contact and deal
-async function createOrUpdateContactAndDeal(variables, from, preferred_appointment_start_time, project_type, Issue) {
+async function createOrUpdateContactAndDeal(variables, from, preferred_appointment_start_time, project_type, Issue, extraDealProps = {}) {
   // 1. Search for contact by email
   let contactId = null;
   let contactResp = null;
@@ -267,16 +267,19 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
 
   try {
     let searchResp;
-    if (variables.Email !== undefined && variables.Email !== null && variables.Email.trim() !== '') {
-      searchResp = await axios.post(
+    const email = (variables.Email || '').trim();
+    const phoneDigits = String(from || '').replace(/\D/g, '');
 
+    // A) Try email first (if provided)
+    if (email !== '') {
+      searchResp = await axios.post(
         'https://api.hubapi.com/crm/v3/objects/contacts/search',
         {
           filterGroups: [{
             filters: [{
               propertyName: 'email',
               operator: 'EQ',
-              value: variables.Email
+              value: email
             }]
           }],
           properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
@@ -287,7 +290,30 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
             'Content-Type': 'application/json'
           }
         }
-      )
+      );
+    }
+
+    // B) If no email match (or no email provided), fallback to phone search
+    if ((!searchResp || !searchResp.data?.results || searchResp.data.results.length === 0) && phoneDigits) {
+      searchResp = await axios.post(
+        'https://api.hubapi.com/crm/v3/objects/contacts/search',
+        {
+          filterGroups: [{
+            filters: [{
+              propertyName: 'phone',
+              operator: 'CONTAINS_TOKEN',
+              value: phoneDigits
+            }]
+          }],
+          properties: ['firstname', 'email', 'phone', 'address', 'project_role__sales_rep']
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
     console.log(variables.cleanUserRole);
     if (searchResp.data.results && searchResp.data.results.length > 0) {
@@ -301,6 +327,7 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
             phone: from,
             address: variables.Location,
             project_role__sales_rep: variables.cleanUserRole,
+            ...(email ? { email } : {})
           }
         },
         {
@@ -353,7 +380,8 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
       customer_success_manager: "", // meeting not scheduled
       project_type: project_type,
       deal_address__if_different_from_contact_address_: variables.Location,
-      project_description: Issue
+      project_description: Issue,
+      ...extraDealProps
     },
     associations: [
       {
@@ -712,18 +740,6 @@ let msg =
       meetingBooked
     });
 
-    // Send Twilio SMS
-    const smsBody = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:
-      https://prostructengineering.com/schedule-consultation1/`;
-
-    try {
-      await sendTwilioSMS(phone, smsBody, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
-      console.log("SMS sent successfully to:", phone);
-    } catch (smsError) {
-      console.error("Error sending SMS:", smsError);
-      // Continue with contact/deal creation even if SMS fails
-    }
-
     // Normalize project type and user role
     const cleanProjectType = normalizeInput(projectType, ALLOWED_PROJECT_TYPES);
     const cleanUserRole = normalizeInput(userRoleValue, ALLOWED_USER_ROLES);
@@ -741,7 +757,12 @@ let msg =
         phone,
         null, // preferred_appointment_start_time (not available since meeting wasn't booked)
         cleanProjectType,
-        description
+        description,
+        {
+          call_status: "Ai",
+          call_sid: callData.call_id || "",
+          call_picked_by: "AI"
+        }
       );
 
       console.log("Contact and deal created successfully:", {
@@ -755,6 +776,18 @@ let msg =
         error: 'Failed to create contact/deal',
         details: contactError.message
       });
+    }
+
+    // Send Twilio SMS (include contact/deal ids so booking updates the same records)
+    const bookingUrl = `https://prostructengineering.com/schedule-consultation1?c=${result?.contact?.id || ""}&d=${result?.deal?.id || ""}`;
+    const smsBody = `Hi, it looks like your call got disconnected before we could schedule your free consultation with one of our top project managers. You can use the link below to book a time that works for you:\n${bookingUrl}`;
+
+    try {
+      await sendTwilioSMS(phone, smsBody, process.env.TWILIO_NUMBER, process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
+      console.log("SMS sent successfully to:", phone);
+    } catch (smsError) {
+      console.error("Error sending SMS:", smsError);
+      // Continue even if SMS fails
     }
 
     // Create note for the contact using summary
@@ -962,7 +995,7 @@ exports.webhookBland = async (req, res) => {
 
     // Create note for the contact using summary
     if (summary && result.contact?.id) {
-      await createNoteForContact(result.contact.id, summary, recording_url);
+      await createNoteForContact(result.contact.id, result.deal.id, summary, recording_url);
     }
 
     console.log({

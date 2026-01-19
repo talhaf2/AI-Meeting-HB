@@ -51,7 +51,7 @@ exports.createOrUpdateDeal = async ({
   contactId,
 }) => {
   try {
-    // A) Twilio deal present → ALWAYS UPDATE it (no create paths)
+    // A) Twilio deal present → ALWAYS UPDATE it (no create paths) missed call.
     if (twilioDealId) {
       const { data } = await axios.patch(
         `${HUB_URL}/deals/${twilioDealId}`,
@@ -63,14 +63,15 @@ exports.createOrUpdateDeal = async ({
     }
 
     // B) No Twilio deal → respect shouldUpdate semantics on latestDealId
-    if (shouldUpdate && latestDealId) {
-      const { data } = await axios.patch(
-        `${HUB_URL}/deals/${latestDealId}`,
-        { properties: dealProps },
-        { headers }
-      );
-      return data;
-    }
+    // if (shouldUpdate && latestDealId) {
+    //   const { data } = await axios.patch(
+    //     `${HUB_URL}/deals/${latestDealId}`,
+    //     { properties: dealProps },
+    //     { headers }
+    //   );
+    //   return data;
+    // }
+
     let dealname =  `Webpage deal - ${email || 'no-email'}`;
     if ((retell_appointment_source || retell_appointment_source === "true") && !twilioDealId) {
       logger.info(`Retell appointment source detected but no Twilio deal ID. Creating new deal for contact ${contactId}.`);
