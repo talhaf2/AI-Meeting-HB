@@ -684,33 +684,9 @@ exports.webhookRetell = async (req, res) => {
     // Check if meeting was booked
     const meetingBooked = dynamicVars.meetingBooked;
 
-let msg =  
-  `*Recording URL:* ${callData.recording_url}` +
-  `\n*Call Summary:* ${callData.call_analysis.call_summary}` +
-  `\n*Meeting Booked:* ${meetingBooked}` +
-  `\n\n*From:* ${callData.from_number || 'N/A'}` +
-  `\n*Name:* ${dynamicVars.name || 'N/A'}` +
-  `\n*Email:* ${dynamicVars.email || 'N/A'}` +
-  `\n*Location:* ${dynamicVars.Location || 'N/A'}` +
-  `\n*User Role:* ${dynamicVars.userRoleValue || 'N/A'}` +
-  `\n*Project Type:* ${dynamicVars.project_type || 'N/A'}` +
-  `\n*Description:* ${dynamicVars.description || 'N/A'}` +
-  `\n\n*Call ID:* ${callData.call_id}`;
+    const isBooked = (meetingBooked || meetingBooked === true || meetingBooked === "true");
 
-
-
-    const sent = await sendCallSlackMessage(msg);
-    console.log("Slack message sent:", sent.data.ok);
-
-    if (meetingBooked || meetingBooked === true || meetingBooked === "true") {
-      console.log("Meeting was booked, no action needed");
-      return res.json({ message: 'Meeting was booked successfully, no action taken' });
-    }
-
-    // Meeting was not booked, proceed with SMS and contact/deal creation
-    console.log("Meeting was not booked, proceeding with follow-up actions");
-
-    // Extract data with fallbacks for missing values
+    // Extract data with fallbacks for missing values (used for Slack + deal creation)
     const name = dynamicVars.name || '';
     const email = dynamicVars.email || '';
     const location = dynamicVars.Location || '';
@@ -720,6 +696,34 @@ let msg =
 
     // Phone number may be missing for web_call; do not use a constant fallback for CRM identity
     const phone = callData.from_number || "";
+
+    // Slack base message (same fields as before)
+    const baseSlackMsg =
+    `🤖 *Inbound call forwarded to AI*\n` +
+      `*Recording URL:* ${callData.recording_url || "n/a"}` +
+      `\n*Call Summary:* ${callData?.call_analysis?.call_summary || callData.transcript || "n/a"}` +
+      `\n*Meeting Booked:* ${meetingBooked}` +
+      `\n\n*From:* ${callData.from_number || 'N/A'}` +
+      `\n*Name:* ${name || 'N/A'}` +
+      `\n*Email:* ${email || 'N/A'}` +
+      `\n*Location:* ${location || 'N/A'}` +
+      `\n*User Role:* ${userRoleValue || 'N/A'}` +
+      `\n*Project Type:* ${projectType || 'N/A'}` +
+      `\n*Description:* ${description || 'N/A'}` +
+      `\n\n*Call ID:* ${callData.call_id || "n/a"}`;
+
+    if (isBooked) {
+      // Keep previous behavior: still send Slack with all details, but no CRM creation
+      const msgBooked =
+        `${baseSlackMsg}\n`;
+      await sendCallSlackMessage(msgBooked);
+
+      console.log("Meeting was booked, no action needed");
+      return res.json({ message: 'Meeting was booked successfully, no action taken' });
+    }
+
+    // Meeting was not booked, proceed with SMS and contact/deal creation
+    console.log("Meeting was not booked, proceeding with follow-up actions");
 
     // Use phone number as name if name is not available
     const contactName = name || (phone ? phone : `Web Call ${callData.call_id || ""}`.trim());
@@ -804,21 +808,24 @@ let msg =
       }
     }
 
-    // Post Slack with created HubSpot records + booking link
+    // Slack: same full details as before + add HubSpot created record links and booking link
     try {
       const bookingUrl = `https://prostructengineering.com/schedule-consultation1?c=${result?.contact?.id || ""}&d=${result?.deal?.id || ""}`;
+      const bookingLinkHyper = bookingUrl ? `<${bookingUrl}|Book appointment>` : "n/a";
       const hsLinks =
         result?.contact?.id && result?.deal?.id
-          ? `*HubSpot:* <${hsContactUrl(result.contact.id)}|Contact> | <${hsDealUrl(result.deal.id)}|Deal>`
-          : `*HubSpot:* n/a`;
+          ? `*HubSpot Created Records:* <${hsContactUrl(result.contact.id)}|Contact> | <${hsDealUrl(result.deal.id)}|Deal>`
+          : `*HubSpot Created Records:* n/a`;
 
-      const followupMsg =
-        `*AI created lead for ${name || email ||phone}*\n` +
+      const fullMsg =
+        `🤖 *AI created lead*\n` +
         `${hsLinks}\n` +
+        `*Use this link to book an appointment:* ${bookingLinkHyper}\n\n` +
+        `${baseSlackMsg}`;
 
-      await sendCallSlackMessage(followupMsg);
+      await sendCallSlackMessage(fullMsg);
     } catch (e) {
-      console.error("Slack follow-up post failed:", e?.response?.data || e?.message || e);
+      console.error("Slack post failed:", e?.response?.data || e?.message || e);
     }
 
     res.json({
