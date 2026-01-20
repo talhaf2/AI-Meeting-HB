@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const meetingRoutes = require('./src/routers/meetingRoutes');
 const hubspotWebpageRoutes = require('./src/routers/hubspotWebpgaeRoutes');
+const existingProjectRoutes = require('./src/routers/existingProjectRoutes');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -18,6 +19,7 @@ app.use(express.urlencoded({ limit: '1mb', extended: true }));
 // API routes
 app.use('/api', meetingRoutes);
 app.use('/api/hubspot-webpage', hubspotWebpageRoutes);
+app.use('/api/existing', existingProjectRoutes);
 
 app.listen(port, () => {
     console.log(`Server running at: ${port}`);
