@@ -145,8 +145,9 @@ exports.listHubspotPms = async (req, res) => {
 
 /**
  * Lookup an existing HubSpot contact by phone (preferred) and email (fallback)
+ * Also fetches all associated Projects with their addresses and PM details
  * GET /api/existing/contact/lookup?phone=...&email=...
- * Returns: { found, contactId?, properties? }
+ * Returns: { found, contactId?, properties?, projects: [{address, pmName, pmId}] }
  */
 exports.lookupContact = async (req, res) => {
   try {
@@ -167,27 +168,27 @@ exports.lookupContact = async (req, res) => {
     let searchResp = null;
 
     // Phone first (if provided): find the contact, then verify email matches exactly (case-insensitive)
-    if (phoneDigits) {
-      searchResp = await axios.post(
-        'https://api.hubapi.com/crm/v3/objects/contacts/search',
-        {
-          filterGroups: [
-            {
-              filters: [
-                {
-                  propertyName: 'phone',
-                  operator: 'CONTAINS_TOKEN',
-                  value: phoneDigits
-                }
-              ]
-            }
-          ],
-          properties: ['firstname', 'lastname', 'email', 'phone', 'address'],
-          limit: 1
-        },
-        { headers }
-      );
-    }
+    // if (phoneDigits) {
+    //   searchResp = await axios.post(
+    //     'https://api.hubapi.com/crm/v3/objects/contacts/search',
+    //     {
+    //       filterGroups: [
+    //         {
+    //           filters: [
+    //             {
+    //               propertyName: 'phone',
+    //               operator: 'CONTAINS_TOKEN',
+    //               value: phoneDigits
+    //             }
+    //           ]
+    //         }
+    //       ],
+    //       properties: ['firstname', 'lastname', 'email', 'phone', 'address'],
+    //       limit: 1
+    //     },
+    //     { headers }
+    //   );
+    // }
 
     // Email fallback: if no phone match, search by email directly
     if ((!searchResp || (searchResp.data?.results || []).length === 0)) {
@@ -224,12 +225,81 @@ exports.lookupContact = async (req, res) => {
       return res.json({ found: false, verified: false });
     }
 
+    // Fetch associated Projects (custom object type 2-32346192)
+    const projects = [];
+    try {
+      // Get associations: Contact -> Projects (custom object)
+      const associationsResp = await axios.get(
+        `https://api.hubapi.com/crm/v3/objects/contacts/${contact.id}/associations/2-32346192`,
+        { headers }
+      );
+
+      // Extract project IDs from associations response (handle different response formats)
+      const associationResults = associationsResp?.data?.results || [];
+      const projectIds = associationResults
+        .map(r => r.toObjectId || r.id || r.to?.id)
+        .filter(Boolean);
+
+      if (projectIds.length > 0) {
+        // Fetch project details in batch
+        const projectsResp = await axios.post(
+          'https://api.hubapi.com/crm/v3/objects/2-32346192/batch/read',
+          {
+            inputs: projectIds.map(id => ({ id })),
+            properties: ['property_address', 'pm_']
+          },
+          { headers }
+        );
+
+        const projectObjects = projectsResp?.data?.results || [];
+
+        // Fetch PM names for each project (using pm_ owner ID)
+        // Batch fetch owners to minimize API calls
+        const pmIds = [...new Set(projectObjects.map(p => p.properties?.pm_).filter(Boolean))];
+        const ownerMap = new Map();
+
+        // Fetch all unique owners in parallel
+        await Promise.all(
+          pmIds.map(async (pmId) => {
+            try {
+              const ownerResp = await axios.get(
+                `https://api.hubapi.com/crm/v3/owners/${pmId}`,
+                { headers }
+              );
+              const owner = ownerResp?.data;
+              const fullName = `${owner?.firstName || ''} ${owner?.lastName || ''}`.trim();
+              if (fullName) {
+                ownerMap.set(pmId, fullName);
+              }
+            } catch (ownerError) {
+              console.warn(`Failed to fetch owner ${pmId}:`, ownerError?.response?.data || ownerError?.message);
+            }
+          })
+        );
+
+        // Build projects array with PM names
+        for (const project of projectObjects) {
+          const pmId = project.properties?.pm_;
+          const pmName = pmId ? ownerMap.get(pmId) || null : null;
+
+          projects.push({
+            projectId: project.id,
+            address: project.properties?.property_address || '',
+            pmName: pmName,
+            pmId: pmId || null
+          });
+        }
+      }
+    } catch (projectsError) {
+      console.error('Error fetching associated projects:', projectsError?.response?.data || projectsError?.message);
+      // Continue even if projects fetch fails - return contact info anyway
+    }
+
     return res.json({
       found: true,
       verified: true,
-      contactId: contact.id,
-      hubspotUrl: hsContactUrl(contact.id),
-      properties: contact.properties || {}
+      properties: contact.properties || {},
+      projects: projects
     });
   } catch (error) {
     console.error(error.response?.data || error.message);
