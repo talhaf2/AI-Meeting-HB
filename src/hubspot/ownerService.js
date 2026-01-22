@@ -53,4 +53,23 @@ async function fetchCSMName(userId) {
   }
 }
 
-module.exports = { getMeetingHostId, fetchCSMName };
+// 🧠 Fetch CSM email from owner ID (for Slack mention)
+async function fetchCSMEmail(userId) {
+  if (!userId) return null;
+
+  try {
+    const { data } = await axios.get(
+      `https://api.hubapi.com/crm/v3/owners/${userId}`,
+      {
+        headers
+      }
+    );
+
+    return data?.email || null;
+  } catch (error) {
+    logger.error(`Failed to fetch CSM email for user ${userId}`, error.response?.data || error.message);
+    return null;
+  }
+}
+
+module.exports = { getMeetingHostId, fetchCSMName, fetchCSMEmail };

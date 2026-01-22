@@ -3,7 +3,7 @@ const { DateTime } = require('luxon');
 const { sendEmail } = require('../utils/email');
 const twilio = require('twilio');
 const { json } = require('express');
-const { sendSlackMessage, sendCallSlackMessage } = require('../services/slackService');
+const { sendCallSlackMessage, sendSlackMessageToChannel, mentionsFromEmails } = require('../services/slackService');
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Los_Angeles'; // Pacific Time
@@ -30,6 +30,9 @@ const getSlugFromSelection = (role, intent) => {
   const parsedRole = Number(String(role).trim());
   const parsedIntent = Number(String(safeIntent).trim());
 
+  console.log({ parsedRole, parsedIntent });
+  
+
   // Role // 0 Homeowner, 1 AEC, 2 Realtor/Property Manager
   // Intent // 0 Structural inspection, 1 Need Qoute, 2 don't have plans (Others queries)
 
@@ -54,6 +57,21 @@ const getSlugFromSelection = (role, intent) => {
 
   // Fallback to a safe default slug to ensure meeting can still be booked
   return 'tfarooq/homeowner-other';
+};
+
+// POST /api/slug
+// Body: { role: 0|1|2, intent: 0|1|2 }  (intent defaults to 2)
+exports.getSlug = (req, res) => {
+  try {
+    const role = req?.body?.role;
+    const intent = req?.body?.intent;
+
+    const slug = getSlugFromSelection(role, intent);
+    return res.json({ slug });
+  } catch (e) {
+    console.error('getSlug error:', e);
+    return res.status(500).json({ error: 'Failed to compute slug' });
+  }
 };
 
 const hasMinusSevenOffset = (timeStr) => {
@@ -712,8 +730,17 @@ exports.webhookRetell = async (req, res) => {
       `\n*Description:* ${description || 'N/A'}` +
       `\n\n*Call ID:* ${callData.call_id || "n/a"}`;
 
+    const parseEmailList = (value) =>
+      String(value || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const cssFollowUpTagEmails = parseEmailList(process.env.CSS_FOLLOW_UP_TAG_EMAILS);
+    const cssMentions = cssFollowUpTagEmails.length ? await mentionsFromEmails(cssFollowUpTagEmails) : "";
+
     if (isBooked) {
-      // Keep previous behavior: still send Slack with all details, but no CRM creation
+      // Keep original behavior: send Slack with base details, but do NOT create CRM records
       const msgBooked =
         `${baseSlackMsg}\n`;
       await sendCallSlackMessage(msgBooked);
@@ -817,12 +844,42 @@ exports.webhookRetell = async (req, res) => {
           ? `*HubSpot Created Records:* <${hsContactUrl(result.contact.id)}|Contact> | <${hsDealUrl(result.deal.id)}|Deal>`
           : `*HubSpot Created Records:* n/a`;
 
+      // CALL_SLACK_CHANNEL_ID: keep the original "old" message as-is (base details + created record links)
       const fullMsg =
       `${baseSlackMsg}\n` +
       `🤖 *AI created Records in HubSpot*\n` +
         `${hsLinks}\n`;
 
       await sendCallSlackMessage(fullMsg);
+
+      // CSS_channelid: new required wording + mentions (AI path is only booked vs not booked)
+      const cssFollowUpMsg =
+        `${cssMentions ? `${cssMentions}\n` : ""}` +
+        `*AI voice agent could not schedule appointment*\n` +
+        `*Please reach out ASAP to schedule*\n` +
+        `_Whoever takes this, reply/react so others know it's handled._\n\n` +
+        `\n*Captured details*\n` +
+        `*Name:* ${name || contactName || "N/A"}\n` +
+        `*Phone:* ${phone || "N/A"}\n` +
+        `*Email:* ${email || "N/A"}\n` +
+        `*Location:* ${location || "N/A"}\n` +
+        `*User Role:* ${userRoleValue || "N/A"}\n` +
+        `*Project Type:* ${projectType || "N/A"}\n` +
+        `*Notes/Description:* ${description || "N/A"}\n` +
+
+        `\n${hsLinks}\n` +
+        `*Use this Booking link: (if appointment is still not booked by client)* ${bookingLinkHyper}\n` +
+        `\n*Call ID:* ${callData.call_id || "n/a"}`;
+
+      // For "not booked" (and missed) we post:
+      // - CALL_SLACK_CHANNEL_ID: keep your existing call channel posting
+      // - CSS_channelid: new dedicated css follow-up channel with required wording/tags
+      const cssChannelId = process.env.CSS_CHANNEL_ID;
+      if (cssChannelId) {
+        await sendSlackMessageToChannel(cssFollowUpMsg, cssChannelId);
+      } else {
+        console.warn("CSS_channelid env var not set; skipping CSS follow-up channel post");
+      }
     } catch (e) {
       console.error("Slack post failed:", e?.response?.data || e?.message || e);
     }

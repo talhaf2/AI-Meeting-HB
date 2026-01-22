@@ -5,13 +5,21 @@ import { withRetry } from "../utils/retry.js";
 
 const queue = new PQueue({ concurrency: 1, interval: 1000 });
 
-export async function sendSlackMessage(text) {
+/**
+ * Post a Slack message to an explicit channel ID.
+ * Use this to support multi-channel posting while keeping existing env-based defaults.
+ */
+export async function sendSlackMessageToChannel(text, channel) {
+  if (!channel) {
+    throw new Error("Slack channel ID is missing");
+  }
+
   return queue.add(() =>
     withRetry(() =>
       axios.post(
         "https://slack.com/api/chat.postMessage",
         {
-          channel: SLACK_CHANNEL_ID,
+          channel,
           text,
           mrkdwn: true,
         },
@@ -26,23 +34,60 @@ export async function sendSlackMessage(text) {
   );
 }
 
+export async function sendSlackMessage(text) {
+  return sendSlackMessageToChannel(text, SLACK_CHANNEL_ID);
+}
+
 export async function sendCallSlackMessage(text) {
-  return queue.add(() =>
-    withRetry(() =>
-      axios.post(
-        "https://slack.com/api/chat.postMessage",
-        {
-          channel: CALL_SLACK_CHANNEL_ID,
-          text,
-          mrkdwn: true,
-        },
-        {
+  return sendSlackMessageToChannel(text, CALL_SLACK_CHANNEL_ID);
+}
+
+// -----------------------------
+// Mentions / user lookup helpers
+// -----------------------------
+const slackUserIdByEmailCache = new Map(); // email(lowercased) -> userId | null
+
+export async function lookupSlackUserIdByEmail(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (slackUserIdByEmailCache.has(normalized)) {
+    return slackUserIdByEmailCache.get(normalized);
+  }
+
+  try {
+    const { data } = await queue.add(() =>
+      withRetry(() =>
+        axios.get("https://slack.com/api/users.lookupByEmail", {
+          params: { email: normalized },
           headers: {
             Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
             "Content-Type": "application/json",
           },
-        }
+        })
       )
-    )
-  );
+    );
+
+    const userId = data?.ok ? data?.user?.id : null;
+    slackUserIdByEmailCache.set(normalized, userId);
+    return userId;
+  } catch (e) {
+    slackUserIdByEmailCache.set(normalized, null);
+    return null;
+  }
+}
+
+export async function mentionByEmail(email) {
+  const userId = await lookupSlackUserIdByEmail(email);
+  return userId ? `<@${userId}>` : "";
+}
+
+export async function mentionsFromEmails(emails = []) {
+  const list = Array.isArray(emails) ? emails : [];
+  const mentions = [];
+  for (const email of list) {
+    const m = await mentionByEmail(email);
+    if (m) mentions.push(m);
+  }
+  return mentions.join(" ");
 }

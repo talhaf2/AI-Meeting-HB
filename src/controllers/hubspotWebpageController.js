@@ -1,7 +1,7 @@
 const { getOrCreateContact, updateContact } = require('../hubspot/contactService');
 const { getAssociatedDeals, getLatestDeal, createOrUpdateDeal } = require('../hubspot/dealService');
-const { getMeetingHostId, fetchCSMName } = require('../hubspot/ownerService');
-const { sendSlackMessage } = require('../services/slackService');
+const { getMeetingHostId, fetchCSMName, fetchCSMEmail } = require('../hubspot/ownerService');
+const { sendSlackMessage, mentionByEmail } = require('../services/slackService');
 const { formatAppointmentTime } = require('../utils/time');
 const logger = require('../utils/logger');
 const { mergeContacts } = require('../hubspot/contactService');
@@ -34,9 +34,9 @@ exports.webapge = async (req, res) => {
             project_role_hs_meeting,
             project_description_webpage_meeting,
             hs_meeting_start_time,
-            hs_object_id_deal,
+            hs_object_id_deal, //not used now...
             dealname,
-            // Twillio created contact and deal.
+            // JustCAll webhook created contact and deal.
             twillio_contact,
             twillio_deal,
             //for Retell - to check if it is booked via retell or not
@@ -96,7 +96,9 @@ exports.webapge = async (req, res) => {
         const hasInquiry = dealname?.toLowerCase().includes("inquiry");
 
         const OwnerId = await getMeetingHostId(hs_object_id || contactId);
-        const CSMname = await fetchCSMName(OwnerId);
+        // const CSMname = await fetchCSMName(OwnerId);
+        const CSMemail = await fetchCSMEmail(OwnerId);
+        const CSMmention = CSMemail ? await mentionByEmail(CSMemail) : '';
 
         const contactName = `${firstname} ${lastname || ""}`;
 
@@ -105,7 +107,7 @@ exports.webapge = async (req, res) => {
         const msg =
             `<https://app.hubspot.com/contacts/45924609/record/0-1/${contactId}>\n\n` +
             `From Huspot Appointments\n` +
-            `Appointment set for *${CSMname}*\n` +
+            `Appointment set for ${CSMmention ? `${CSMmention}\n` : CSMemail ? CSMemail : ''}\n` +
             `Date/time: *${formattedTime}*\n\n` +
             `Scope of Work: ${project_description_webpage_meeting || 'N/A'}\n\n` +
             `Name: ${contactName}\n` +

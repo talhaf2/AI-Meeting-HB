@@ -12,6 +12,7 @@ router.post('/webhook', meetingController.webhookBland);
 
 router.post('/test', meetingController.test);
 
+router.post('/slug', meetingController.getSlug);
 
 
 module.exports = router;
