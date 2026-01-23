@@ -119,8 +119,8 @@ async function fetchAvailability(slug, monthoffset) {
 exports.getAvailability = async (req, res) => {
   try {
     console.log('req.body', req.body);
-    const userRole  = req.body.userRole;
-    const userNeed  = req.body.userNeed;
+    const userRole  = req.body.args.userRole;
+    const userNeed  = req.body.args.userNeed;
 
     console.log("userRole: ", userRole);
     console.log("userNeed: ", userNeed);
