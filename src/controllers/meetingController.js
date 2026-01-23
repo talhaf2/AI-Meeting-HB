@@ -847,8 +847,8 @@ exports.webhookRetell = async (req, res) => {
       const bookingLinkHyper = bookingUrl ? `<${bookingUrl}|Book appointment>` : "n/a";
       const hsLinks =
         result?.contact?.id && result?.deal?.id
-          ? `*HubSpot Created Records:* <${hsContactUrl(result.contact.id)}|Contact> | <${hsDealUrl(result.deal.id)}|Deal>`
-          : `*HubSpot Created Records:* n/a`;
+          ? `*Deal URL:* <${hsDealUrl(result.deal.id)}|Deal>`
+          : `*Deal URL:* n/a`;
 
       // CALL_SLACK_CHANNEL_ID: keep the original "old" message as-is (base details + created record links)
       const fullMsg =
