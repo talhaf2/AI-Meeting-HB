@@ -118,8 +118,14 @@ async function fetchAvailability(slug, monthoffset) {
 
 exports.getAvailability = async (req, res) => {
   try {
-    const { userRole, userNeed } = req.query;
-    if (!userRole || !userNeed) {
+    console.log('req.body', req.body);
+    const userRole  = req.body.userRole;
+    const userNeed  = req.body.userNeed;
+
+    console.log("userRole: ", userRole);
+    console.log("userNeed: ", userNeed);
+
+    if (userRole === undefined || userRole === null || userNeed === undefined || userNeed === null) {
       return res.status(400).json({ error: 'userRole and userNeed are required' });
     }
 
