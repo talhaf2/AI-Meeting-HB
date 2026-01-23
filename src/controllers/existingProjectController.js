@@ -401,6 +401,8 @@ exports.bookPmMeeting = async (req, res) => {
       firstName: firstName || ' ',
       lastName: lastName || ' ',
       email: email || '',
+      phone: phone || '',
+      address: address || '',
       timezone: DEFAULT_TIMEZONE,
     };
 
