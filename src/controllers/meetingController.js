@@ -874,7 +874,7 @@ exports.webhookRetell = async (req, res) => {
         `*Notes/Description:* ${description || "N/A"}\n` +
 
         `\n${hsLinks}\n` +
-        `*Use this Booking link: (if appointment is still not booked by client)* ${bookingLinkHyper}\n` +
+        `⚠️ *Note:* Use this Booking link: (if appointment is still not booked by client) ${bookingLinkHyper}\n\n` +
         `\n*Call ID:* ${callData.call_id || "n/a"}`;
 
       // For "not booked" (and missed) we post:
