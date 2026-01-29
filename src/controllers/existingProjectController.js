@@ -1,6 +1,6 @@
 const axios = require('axios');
 const { DateTime } = require('luxon');
-const { sendCallSlackMessage } = require('../services/slackService');
+const { sendCallSlackMessage, mentionsFromEmails } = require('../services/slackService');
 const fs = require('fs');
 const path = require('path');
 
@@ -470,6 +470,104 @@ exports.bookPmMeeting = async (req, res) => {
   } catch (error) {
     console.error(error.response?.data || error.message);
     res.status(error.response?.status || 500).json({ error: error.response?.data || error.message });
+  }
+};
+
+/**
+ * Webhook handler for Retell existing project calls
+ * POST /api/existing/webhook-retell
+ * Handles call_analyzed events and sends Slack notification if meeting was NOT booked
+ */
+exports.webhookRetellExisting = async (req, res) => {
+  try {
+    console.log("Existing project webhook - req.body.event:", req.body.event);
+
+    // Only process call_analyzed events as they contain the complete call data
+    if (!req.body.event || req.body.event !== 'call_analyzed') {
+      return res.json({ message: `Event ${req.body.event || 'unknown'} received but not processed` });
+    }
+
+    const callData = req.body.call;
+    if (!callData) {
+      return res.json({ message: 'No call data found' });
+    }
+
+    console.log("Existing project callData:", callData);
+
+    // collected_dynamic_variables may be missing if the user hangs up early
+    const dynamicVars = callData.collected_dynamic_variables || {};
+
+    // Check if meeting was booked
+    const meetingBooked = dynamicVars.meetingBooked;
+    const isBooked = (meetingBooked || meetingBooked === true || meetingBooked === "true");
+
+    // Extract data with fallbacks
+    const firstName = dynamicVars.firstName || '';
+    const lastName = dynamicVars.lastName || '';
+    const email = dynamicVars.email || '';
+    const phone = callData.from_number || '';
+    const address = dynamicVars.address || dynamicVars.projectAddress || '';
+    const pmName = dynamicVars.pm || dynamicVars.pmName || '';
+    const description = dynamicVars.description || 'N/A';
+
+    const clientName = `${firstName} ${lastName}`.trim() || (phone ? phone : 'Unknown');
+
+    // Get call summary and recording
+    const summary = callData.call_analysis?.call_summary || callData.transcript || '';
+    const recordingUrl = callData.recording_url || '';
+
+    // Base Slack message
+    const baseSlackMsg =
+      `📞 *Existing Project Call — AI Voice Agent*\n` +
+      `*Recording URL:* ${recordingUrl || "n/a"}\n` +
+      `*Call Summary:* ${summary || "n/a"}\n` +
+      `*Meeting Booked:* ${meetingBooked}\n\n` +
+      `*Caller:* ${phone || 'N/A'}${clientName && clientName !== phone ? ` (${clientName})` : ''}\n` +
+      `*Email:* ${email || 'N/A'}\n` +
+      `*Project Address:* ${address || 'N/A'}\n` +
+      `*PM:* ${pmName || 'N/A'}\n` +
+      `*Description:* ${description || 'N/A'}\n` +
+      `*Call ID:* ${callData.call_id || "n/a"}`;
+
+    if (isBooked) {
+      // Meeting was booked - send notification (booking endpoint already sends one, but this confirms)
+      const msgBooked = `${baseSlackMsg}\n\n✅ *Meeting was successfully booked during the call.*`;
+      // await sendCallSlackMessage(msgBooked);
+      console.log("Existing project: Meeting was booked, notification sent");
+      return res.json({ message: 'Meeting was booked successfully, notification sent' });
+    }
+
+    // Meeting was NOT booked - send follow-up notification
+    console.log("Existing project: Meeting was not booked, sending follow-up notification");
+
+    // Parse CSS follow-up tag emails for mentions
+    const parseEmailList = (value) =>
+      String(value || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+    const cssFollowUpTagEmails = parseEmailList(process.env.CSS_FOLLOW_UP_TAG_EMAILS);
+    const cssMentions = cssFollowUpTagEmails.length ? await mentionsFromEmails(cssFollowUpTagEmails) : "";
+
+    // Build follow-up message
+    const followUpMsg =
+      `${cssMentions ? `${cssMentions}\n` : ""}` +
+      `⚠️ *Existing Project Call — Meeting NOT Booked*\n` +
+      `*Please follow up with this existing client*\n` +
+      `_Whoever takes this, reply/react so others know it's handled._\n\n` +
+      `${baseSlackMsg}\n\n` +
+      `*Next Steps:* Contact the client to schedule a meeting with ${pmName || 'their PM'} for their project at ${address || 'the listed address'}.`;
+
+    await sendCallSlackMessage(followUpMsg);
+    console.log("Existing project: Follow-up notification sent to Slack");
+
+    return res.json({ message: 'Call processed, follow-up notification sent' });
+  } catch (error) {
+    console.error('Existing project webhook error:', error.response?.data || error.message || error);
+    res.status(error.response?.status || 500).json({ 
+      error: error.response?.data || error.message || 'Internal server error' 
+    });
   }
 };
 
