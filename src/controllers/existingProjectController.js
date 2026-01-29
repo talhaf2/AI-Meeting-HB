@@ -147,7 +147,13 @@ exports.listHubspotPms = async (req, res) => {
  * Lookup an existing HubSpot contact by phone (preferred) and email (fallback)
  * Also fetches all associated Projects with their addresses and PM details
  * GET /api/existing/contact/lookup?phone=...&email=...
- * Returns: { found, contactId?, properties?, projects: [{address, pmName, pmId}] }
+ * Returns: { found, contactId?, properties?, projects: [{address, pmName, pmId, projectId}] }
+ * 
+ * Flow:
+ * 1. If phone provided → search by phone first
+ *    - If found → return contact + projects (no email verification needed)
+ *    - If not found → require email → search by email → verify email → return contact + projects
+ * 2. If no phone but email provided → search by email → verify email → return contact + projects
  */
 exports.lookupContact = async (req, res) => {
   try {
@@ -155,62 +161,81 @@ exports.lookupContact = async (req, res) => {
     const email = String(req.query.email || '').trim();
     const phoneDigits = digits(phone);
 
-    // Privacy requirement: do NOT reveal contact details unless caller provides an email to verify.
-    if (!email) {
-      return res.status(400).json({ error: 'Email is required to verify the existing project contact.' });
-    }
-
     const headers = {
       Authorization: `Bearer ${HUBSPOT_API_KEY}`,
       'Content-Type': 'application/json'
     };
 
     let searchResp = null;
+    let foundByPhone = false;
 
-    // Phone first (if provided): find the contact, then verify email matches exactly (case-insensitive)
-    // if (phoneDigits) {
-    //   searchResp = await axios.post(
-    //     'https://api.hubapi.com/crm/v3/objects/contacts/search',
-    //     {
-    //       filterGroups: [
-    //         {
-    //           filters: [
-    //             {
-    //               propertyName: 'phone',
-    //               operator: 'CONTAINS_TOKEN',
-    //               value: phoneDigits
-    //             }
-    //           ]
-    //         }
-    //       ],
-    //       properties: ['firstname', 'lastname', 'email', 'phone', 'address'],
-    //       limit: 1
-    //     },
-    //     { headers }
-    //   );
-    // }
+    // Phone first (if provided): search by phone
+    if (phoneDigits) {
+      try {
+        searchResp = await axios.post(
+          'https://api.hubapi.com/crm/v3/objects/contacts/search',
+          {
+            filterGroups: [
+              {
+                filters: [
+                  {
+                    propertyName: 'phone',
+                    operator: 'CONTAINS_TOKEN',
+                    value: phoneDigits
+                  }
+                ]
+              }
+            ],
+            properties: ['firstname', 'lastname', 'email', 'phone', 'address'],
+            limit: 1
+          },
+          { headers }
+        );
+        
+        if (searchResp?.data?.results?.length > 0) {
+          foundByPhone = true;
+        }
+      } catch (phoneError) {
+        console.warn('Phone search failed:', phoneError?.response?.data || phoneError?.message);
+      }
+    }
 
-    // Email fallback: if no phone match, search by email directly
-    if ((!searchResp || (searchResp.data?.results || []).length === 0)) {
-      searchResp = await axios.post(
-        'https://api.hubapi.com/crm/v3/objects/contacts/search',
-        {
-          filterGroups: [
-            {
-              filters: [
-                {
-                  propertyName: 'email',
-                  operator: 'EQ',
-                  value: email
-                }
-              ]
-            }
-          ],
-          properties: ['firstname', 'lastname', 'email', 'phone', 'address'],
-          limit: 1
-        },
-        { headers }
-      );
+    // Email fallback: if no phone match, search by email (email becomes required)
+    if (!foundByPhone) {
+      if (!email) {
+        return res.status(400).json({ 
+          found: false,
+          error: 'Contact not found by phone. Email is required to search for existing project contact.' 
+        });
+      }
+
+      try {
+        searchResp = await axios.post(
+          'https://api.hubapi.com/crm/v3/objects/contacts/search',
+          {
+            filterGroups: [
+              {
+                filters: [
+                  {
+                    propertyName: 'email',
+                    operator: 'EQ',
+                    value: email
+                  }
+                ]
+              }
+            ],
+            properties: ['firstname', 'lastname', 'email', 'phone', 'address'],
+            limit: 1
+          },
+          { headers }
+        );
+      } catch (emailError) {
+        console.error('Email search failed:', emailError?.response?.data || emailError?.message);
+        return res.status(emailError?.response?.status || 500).json({ 
+          found: false,
+          error: emailError?.response?.data || emailError?.message 
+        });
+      }
     }
 
     const contact = searchResp?.data?.results?.[0];
@@ -218,11 +243,13 @@ exports.lookupContact = async (req, res) => {
       return res.json({ found: false });
     }
 
-    // Verify email matches the record before returning any PII
-    const recordEmail = String(contact?.properties?.email || '').trim().toLowerCase();
-    const providedEmail = String(email).trim().toLowerCase();
-    if (!recordEmail || recordEmail !== providedEmail) {
-      return res.json({ found: false, verified: false });
+    // If found by email (not phone), verify email matches the record
+    if (!foundByPhone && email) {
+      const recordEmail = String(contact?.properties?.email || '').trim().toLowerCase();
+      const providedEmail = String(email).trim().toLowerCase();
+      if (!recordEmail || recordEmail !== providedEmail) {
+        return res.json({ found: false, verified: false });
+      }
     }
 
     // Fetch associated Projects (custom object type 2-32346192)
@@ -297,9 +324,11 @@ exports.lookupContact = async (req, res) => {
 
     return res.json({
       found: true,
-      verified: true,
+      verified: foundByPhone ? true : true, // Phone match doesn't need email verification
+      contactId: contact.id,
       properties: contact.properties || {},
-      projects: projects
+      projects: projects,
+      projectCount: projects.length
     });
   } catch (error) {
     console.error(error.response?.data || error.message);
