@@ -408,10 +408,10 @@ exports.bookPmMeeting = async (req, res) => {
     }
 
     // Require identity fields from Retell
-    if (!firstName || !lastName || !email || !phone) {
+    if (!firstName || !lastName || !email) {
       return res.status(400).json({
         error: 'Missing required fields',
-        required: ['firstName', 'lastName', 'email', 'phone'],
+        required: ['firstName', 'lastName', 'email'],
       });
     }
 
