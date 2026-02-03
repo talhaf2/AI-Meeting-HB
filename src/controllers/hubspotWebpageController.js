@@ -8,10 +8,20 @@ const { mergeContacts } = require('../hubspot/contactService');
 const axios = require('axios');
 const { HUB_URL, headers } = require('../../config/constants');
 
+let _withRetry = null;
+async function withRetry(fn, retries, delayMs) {
+    if (!_withRetry) {
+        ({ withRetry: _withRetry } = await import('../utils/retry.js'));
+    }
+    return _withRetry(fn, retries, delayMs);
+}
+
 // Helper function to get deal stage
 async function getDealStage(dealId) {
     try {
-        const { data } = await axios.get(`${HUB_URL}/deals/${dealId}?properties=dealstage`, { headers });
+        const { data } = await withRetry(() =>
+            axios.get(`${HUB_URL}/deals/${dealId}?properties=dealstage`, { headers })
+        );
         return data.properties?.dealstage || null;
     } catch (err) {
         logger.error(`Failed to fetch deal stage for deal ${dealId}`, err.response?.data || err);

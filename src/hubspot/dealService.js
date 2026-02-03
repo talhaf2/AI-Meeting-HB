@@ -2,9 +2,19 @@ const axios = require('axios');
 const { HUB_URL, headers } = require('../../config/constants');
 const logger = require('../utils/logger');
 
+let _withRetry = null;
+async function withRetry(fn, retries, delayMs) {
+  if (!_withRetry) {
+    ({ withRetry: _withRetry } = await import('../utils/retry.js'));
+  }
+  return _withRetry(fn, retries, delayMs);
+}
+
 exports.getAssociatedDeals = async (contactId) => {
   try {
-    const { data } = await axios.get(`${HUB_URL}/contacts/${contactId}/associations/deals`, { headers });
+    const { data } = await withRetry(() =>
+      axios.get(`${HUB_URL}/contacts/${contactId}/associations/deals`, { headers })
+    );
     return data.results.map(r => r.id);
   } catch (err) {
     logger.error(`Failed to fetch deals for contact ${contactId}`, err.response?.data || err);
@@ -18,7 +28,7 @@ exports.getLatestDeal = async (dealIds = []) => {
 
     const deals = await Promise.all(
       dealIds.map(id =>
-        axios.get(`${HUB_URL}/deals/${id}?properties=dealname,createdate,appointment_set_`, { headers })
+        withRetry(() => axios.get(`${HUB_URL}/deals/${id}?properties=dealname,createdate,appointment_set_`, { headers }))
       )
     );
 
@@ -53,10 +63,12 @@ exports.createOrUpdateDeal = async ({
   try {
     // A) Twilio deal present → ALWAYS UPDATE it (no create paths) missed call.
     if (twilioDealId) {
-      const { data } = await axios.patch(
-        `${HUB_URL}/deals/${twilioDealId}`,
-        { properties: dealProps },
-        { headers }
+      const { data } = await withRetry(() =>
+        axios.patch(
+          `${HUB_URL}/deals/${twilioDealId}`,
+          { properties: dealProps },
+          { headers }
+        )
       );
 
       return data;
@@ -79,18 +91,20 @@ exports.createOrUpdateDeal = async ({
     }
 
     // C) Neither Twilio nor updatable latest → CREATE new
-    const { data } = await axios.post(
-      `${HUB_URL}/deals`,
-      {
-        properties: { dealname: dealname, ...dealProps },
-        associations: [
-          {
-            to: { id: contactId },
-            types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }]
-          }
-        ]
-      },
-      { headers }
+    const { data } = await withRetry(() =>
+      axios.post(
+        `${HUB_URL}/deals`,
+        {
+          properties: { dealname: dealname, ...dealProps },
+          associations: [
+            {
+              to: { id: contactId },
+              types: [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }]
+            }
+          ]
+        },
+        { headers }
+      )
     );
     return data;
   } catch (err) {

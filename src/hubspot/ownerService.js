@@ -2,14 +2,24 @@ const axios = require('axios');
 const logger = require('../utils/logger');
 const { HUB_URL, headers } = require('../../config/constants');
 
+let _withRetry = null;
+async function withRetry(fn, retries, delayMs) {
+  if (!_withRetry) {
+    ({ withRetry: _withRetry } = await import('../utils/retry.js'));
+  }
+  return _withRetry(fn, retries, delayMs);
+}
+
 // 🧠 Get meeting host (owner ID) from recent engagement
 async function getMeetingHostId(contactId) {
   try {
-    const { data } = await axios.get(
-      `https://api.hubapi.com/engagements/v1/engagements/associated/contact/${contactId}/paged?limit=100`,
-      {
-        headers
-      }
+    const { data } = await withRetry(() =>
+      axios.get(
+        `https://api.hubapi.com/engagements/v1/engagements/associated/contact/${contactId}/paged?limit=100`,
+        {
+          headers
+        }
+      )
     );
 
     const meetings = data.results
@@ -37,11 +47,13 @@ async function fetchCSMName(userId) {
   if (!userId) return "Unknown PM";
 
   try {
-    const { data } = await axios.get(
-      `https://api.hubapi.com/crm/v3/owners/${userId}`,
-      {
-        headers
-      }
+    const { data } = await withRetry(() =>
+      axios.get(
+        `https://api.hubapi.com/crm/v3/owners/${userId}`,
+        {
+          headers
+        }
+      )
     );
 
     const fullName = `${data.firstName || ''} ${data.lastName || ''}`.trim();
@@ -58,11 +70,13 @@ async function fetchCSMEmail(userId) {
   if (!userId) return null;
 
   try {
-    const { data } = await axios.get(
-      `https://api.hubapi.com/crm/v3/owners/${userId}`,
-      {
-        headers
-      }
+    const { data } = await withRetry(() =>
+      axios.get(
+        `https://api.hubapi.com/crm/v3/owners/${userId}`,
+        {
+          headers
+        }
+      )
     );
 
     return data?.email || null;
