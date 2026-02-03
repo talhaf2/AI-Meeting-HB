@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { HUB_URL, headers } = require('../../config/constants');
+const { fetchCSMName } = require('../hubspot/ownerService');
 
 let _withRetry = null;
 async function withRetry(fn, retries, delayMs) {
@@ -98,6 +99,35 @@ exports.getStaleAppointmentSetDeals = async (req, res) => {
 
       after = data?.paging?.next?.after;
       if (!after) break;
+    }
+
+    // Resolve customer_success_manager (ownerId) -> owner name for response readability
+    // (HubSpot stores this as an ID; we keep the ID in `customer_success_manager_id` too.)
+    const ownerIds = [
+      ...new Set(
+        deals
+          .map(d => d?.properties?.customer_success_manager)
+          .filter(Boolean)
+          .map(v => String(v).trim())
+          .filter(Boolean)
+      )
+    ];
+
+    const ownerNameById = new Map();
+    for (const ownerId of ownerIds) {
+      const name = await fetchCSMName(ownerId);
+      ownerNameById.set(ownerId, name || 'Unknown PM');
+    }
+
+    for (const d of deals) {
+      const ownerId = d?.properties?.customer_success_manager;
+      if (!ownerId) continue;
+      const key = String(ownerId).trim();
+      if (!key) continue;
+
+      // preserve original id, but return name in the "customer_success_manager" field
+      d.properties.customer_success_manager_id = key;
+      d.properties.customer_success_manager = ownerNameById.get(key) || 'Unknown PM';
     }
 
     // sort most overdue first
