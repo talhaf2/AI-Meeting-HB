@@ -20,8 +20,21 @@ function normalizeToE164US(value) {
  */
 exports.sendSms = async (req, res) => {
   try {
+    const requiredSecret = process.env.RFI_API_SECRET;
+    if (requiredSecret) {
+      const provided = String(req.header('x-rfi-secret') || '');
+      if (provided !== requiredSecret) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    }
 
-    const toRaw = req?.body?.to;
+    const toRaw =
+      req?.body?.to ??
+      req?.body?.phone ??
+      req?.body?.args?.to ??
+      req?.body?.args?.phone ??
+      req?.body?.variables?.to ??
+      req?.body?.variables?.phone;
     const to = normalizeToE164US(toRaw);
     if (!to) {
       return res.status(400).json({ error: 'Valid "to" phone is required' });
