@@ -5,6 +5,7 @@ const meetingRoutes = require('./src/routers/meetingRoutes');
 const hubspotWebpageRoutes = require('./src/routers/hubspotWebpgaeRoutes');
 const existingProjectRoutes = require('./src/routers/existingProjectRoutes');
 const dispositioningRoutes = require('./src/routers/dispositioningRoutes');
+const rfiRoutes = require('./src/routers/rfiRoutes');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -22,6 +23,7 @@ app.use('/api', meetingRoutes);
 app.use('/api/hubspot-webpage', hubspotWebpageRoutes);
 app.use('/api/existing', existingProjectRoutes);
 app.use('/api/dispositioning', dispositioningRoutes);
+app.use('/api/rfi', rfiRoutes);
 
 app.listen(port, () => {
     console.log(`Server running at: ${port}`);
