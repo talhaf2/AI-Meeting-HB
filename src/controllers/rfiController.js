@@ -45,7 +45,9 @@ async function sendRfiSms(toE164) {
   }
 
   const client = twilio(accountSid, authToken);
-  const body = 'Prostruct Engineering RFI support link: https://rfi.prostructengineering.com';
+  const body =
+    'Please fill out this short form to open direct channel with the project team for RFI support\n' +
+    'https://rfi.prostructengineering.com';
   return client.messages.create({ to: toE164, from, body });
 }
 
