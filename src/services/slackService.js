@@ -1,6 +1,6 @@
 import axios from "axios";
 import PQueue from "p-queue";
-import { SLACK_BOT_TOKEN, SLACK_CHANNEL_ID, CALL_SLACK_CHANNEL_ID } from "../../config/env.js";
+import { SLACK_BOT_TOKEN, SLACK_CHANNEL_ID, CALL_SLACK_CHANNEL_ID, PM_SLACK_CHANNEL } from "../../config/env.js";
 import { withRetry } from "../utils/retry.js";
 
 const queue = new PQueue({ concurrency: 1, interval: 1000 });
@@ -40,6 +40,10 @@ export async function sendSlackMessage(text) {
 
 export async function sendCallSlackMessage(text) {
   return sendSlackMessageToChannel(text, CALL_SLACK_CHANNEL_ID);
+}
+
+export async function sendPmSlackMessage(text) {
+  return sendSlackMessageToChannel(text, PM_SLACK_CHANNEL);
 }
 
 // -----------------------------

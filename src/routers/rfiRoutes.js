@@ -14,6 +14,9 @@ const retellJsonParser = express.json({
 // Retell -> API -> Twilio (JSON)
 router.post('/send-sms', retellJsonParser, rfiController.sendSms);
 
+// Retell webhook for RFI support calls (Slack + conditional SMS)
+router.post('/webhook-retell-rfi', retellJsonParser, rfiController.webhookRetellRfi);
+
 router.get('/health', (req, res) => res.json({ ok: true }));
 
 module.exports = router;

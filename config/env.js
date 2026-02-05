@@ -6,6 +6,7 @@ export const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
 export const SLACK_CHANNEL_ID = process.env.SLACK_CHANNEL_ID;
 
 export const CALL_SLACK_CHANNEL_ID = process.env.CALL_SLACK_CHANNEL_ID;
+export const PM_SLACK_CHANNEL = process.env.PM_SLACK_CHANNEL;
 
 
 // export const SMTP_USER = process.env.EMAIL_USER;

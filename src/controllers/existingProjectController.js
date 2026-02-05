@@ -1,6 +1,7 @@
 const axios = require('axios');
 const { DateTime } = require('luxon');
-const { sendCallSlackMessage, mentionsFromEmails } = require('../services/slackService');
+const { sendCallSlackMessage, sendSlackMessageToChannel, mentionsFromEmails } = require('../services/slackService');
+const twilio = require('twilio');
 const fs = require('fs');
 const path = require('path');
 
@@ -43,6 +44,35 @@ function resolvePmSlug(pmKey) {
 
 function digits(s) {
   return String(s || '').replace(/\D/g, '');
+}
+
+function normalizeToE164US(value) {
+  const d = digits(value);
+  if (!d) return null;
+  if (String(value || '').trim().startsWith('+')) return `+${d}`;
+  if (d.length === 10) return `+1${d}`;
+  if (d.length === 11 && d.startsWith('1')) return `+${d}`;
+  return null;
+}
+
+async function sendTwilioSMS(to, body) {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const from = '+18552985012'; // Existing agent number (fixed as requested)
+
+  if (!accountSid || !authToken) {
+    console.warn('[Existing Project SMS] Missing TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN; skipping SMS');
+    return null;
+  }
+
+  const toE164 = normalizeToE164US(to);
+  if (!toE164) {
+    console.warn('[Existing Project SMS] Invalid "to" phone; skipping SMS', { to });
+    return null;
+  }
+
+  const client = twilio(accountSid, authToken);
+  return client.messages.create({ to: toE164, from, body });
 }
 
 // Helper: Convert milliseconds (UTC) to ISO 8601 string in DEFAULT_TIMEZONE
@@ -443,29 +473,6 @@ exports.bookPmMeeting = async (req, res) => {
       }
     });
 
-    // Slack notify (no CRM creation here)
-    try {
-      const when = DateTime.fromISO(formattedStartTime)
-        .setZone(DEFAULT_TIMEZONE)
-        .toLocaleString(DateTime.DATETIME_FULL);
-
-      const contactLink = contactId ? `<${hsContactUrl(contactId)}|Contact>` : 'n/a';
-      const msg =
-        `📅 *Existing Project — PM meeting booked*\n` +
-        `*PM:* ${pm}\n` +
-        `*When:* ${when}\n` +
-        `*Client:* ${((firstName || '') + ' ' + (lastName || '')).trim() || 'n/a'}\n` +
-        `*Phone:* ${phone || 'n/a'}\n` +
-        `*Email:* ${email || 'n/a'}\n` +
-        `*Address:* ${address || 'n/a'}\n` +
-        `*Description:* ${description || 'n/a'}\n` +
-        `*HubSpot Contact:* ${contactLink}`;
-
-      await sendCallSlackMessage(msg);
-    } catch (e) {
-      console.error('Slack PM booking notify failed:', e?.response?.data || e?.message || e);
-    }
-
     return res.json({ data: response.data });
   } catch (error) {
     console.error(error.response?.data || error.message);
@@ -532,7 +539,16 @@ exports.webhookRetellExisting = async (req, res) => {
     if (isBooked) {
       // Meeting was booked - send notification (booking endpoint already sends one, but this confirms)
       const msgBooked = `${baseSlackMsg}\n\n✅ *Meeting was successfully booked during the call.*`;
-      // await sendCallSlackMessage(msgBooked);
+      try {
+        const pmChannel = process.env.PM_SLACK_CHANNEL;
+        if (pmChannel) {
+          await sendSlackMessageToChannel(msgBooked, pmChannel);
+        } else {
+          await sendCallSlackMessage(msgBooked);
+        }
+      } catch (e) {
+        console.error("Existing project: Slack booked notify failed:", e?.response?.data || e?.message || e);
+      }
       console.log("Existing project: Meeting was booked, notification sent");
       return res.json({ message: 'Meeting was booked successfully, notification sent' });
     }
@@ -559,8 +575,32 @@ exports.webhookRetellExisting = async (req, res) => {
       `${baseSlackMsg}\n\n` +
       `*Next Steps:* Contact the client to schedule a meeting with ${pmName || 'their PM'} for their project at ${address || 'the listed address'}.`;
 
-    await sendCallSlackMessage(followUpMsg);
+    const pmChannel = process.env.PM_SLACK_CHANNEL;
+    if (pmChannel) {
+      await sendSlackMessageToChannel(followUpMsg, pmChannel);
+    } else {
+      await sendCallSlackMessage(followUpMsg);
+    }
     console.log("Existing project: Follow-up notification sent to Slack");
+
+    // Client SMS fallback: tell them booking didn't complete
+    try {
+      if (phone) {
+        const smsBody =
+          `Hi${clientName && clientName !== phone ? ` ${clientName}` : ''}, ` +
+          `it looks like we couldn't complete your booking during the call. ` +
+          `Someone from our team will get back to you as soon as possible. ` +
+          `If you'd like to schedule now, you can use: https://prostructengineering.com/schedule-consultation/`;
+
+        const msg = await sendTwilioSMS(phone, smsBody);
+        console.log('[Existing Project SMS] sent', { to: phone, sid: msg?.sid });
+      } else {
+        console.log('[Existing Project SMS] No caller number available; skipping SMS');
+      }
+    } catch (smsError) {
+      console.error('[Existing Project SMS] send error', smsError?.message || smsError);
+      // Continue even if SMS fails
+    }
 
     return res.json({ message: 'Call processed, follow-up notification sent' });
   } catch (error) {
