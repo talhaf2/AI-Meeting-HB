@@ -33,9 +33,9 @@ function isTrueish(v) {
 }
 
 async function sendRfiSms(toE164) {
-  const from = process.env.TWILIO_NUMBER_RFI;
+  const from = process.env.TWILIO_NUMBER;
   if (!from) {
-    throw new Error('TWILIO_NUMBER_RFI is not configured');
+    throw new Error('TWILIO_NUMBER is not configured');
   }
 
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
@@ -78,8 +78,8 @@ exports.sendSms = async (req, res) => {
 
     const msg = await sendRfiSms(to);
 
-    console.log('[RFI SMS] sent', { to, from: process.env.TWILIO_NUMBER_RFI, sid: msg.sid });
-    return res.json({ ok: true, sid: msg.sid, to, from: process.env.TWILIO_NUMBER_RFI });
+    console.log('[RFI SMS] sent', { to, from: process.env.TWILIO_NUMBER, sid: msg.sid });
+    return res.json({ ok: true, sid: msg.sid, to, from: process.env.TWILIO_NUMBER });
   } catch (e) {
     console.error('[RFI SMS] send error', e?.message || e);
     return res.status(500).json({ error: e?.message || 'Failed to send SMS' });
@@ -141,10 +141,10 @@ exports.webhookRetellRfi = async (req, res) => {
       const slackMsg =
         `<!channel>\n` +
         `🧾 *RFI Support Call*\n` +
-
+ 
         `*Call Summary:* ${summary || 'n/a'}\n` +
-        `*Caller:* ${toE164 || phoneRaw || 'n/a'}\n` ;
-
+        `*Caller:* ${toE164 || phoneRaw || 'n/a'}\n`;
+  
 
       await sendRfiSlackAlert(slackMsg);
     } catch (e) {

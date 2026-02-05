@@ -58,10 +58,15 @@ function normalizeToE164US(value) {
 async function sendTwilioSMS(to, body) {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const from = '+18552985012'; // Existing agent number (fixed as requested)
+  const from = process.env.TWILIO_NUMBER; // Main number
 
   if (!accountSid || !authToken) {
     console.warn('[Existing Project SMS] Missing TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN; skipping SMS');
+    return null;
+  }
+
+  if (!from) {
+    console.warn('[Existing Project SMS] Missing TWILIO_NUMBER; skipping SMS');
     return null;
   }
 
