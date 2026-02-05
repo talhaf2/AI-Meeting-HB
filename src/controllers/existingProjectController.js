@@ -589,8 +589,7 @@ exports.webhookRetellExisting = async (req, res) => {
         const smsBody =
           `Hi${clientName && clientName !== phone ? ` ${clientName}` : ''}, ` +
           `it looks like we couldn't complete your booking during the call. ` +
-          `Someone from our team will get back to you as soon as possible. ` +
-          `If you'd like to schedule now, you can use: https://prostructengineering.com/schedule-consultation/`;
+          `Someone from our team will get back to you as soon as possible. ` ;
 
         const msg = await sendTwilioSMS(phone, smsBody);
         console.log('[Existing Project SMS] sent', { to: phone, sid: msg?.sid });
