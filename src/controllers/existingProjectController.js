@@ -561,19 +561,9 @@ exports.webhookRetellExisting = async (req, res) => {
     // Meeting was NOT booked - send follow-up notification
     console.log("Existing project: Meeting was not booked, sending follow-up notification");
 
-    // Parse CSS follow-up tag emails for mentions
-    const parseEmailList = (value) =>
-      String(value || "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-    const cssFollowUpTagEmails = parseEmailList(process.env.CSS_FOLLOW_UP_TAG_EMAILS);
-    const cssMentions = cssFollowUpTagEmails.length ? await mentionsFromEmails(cssFollowUpTagEmails) : "";
-
     // Build follow-up message
     const followUpMsg =
-      `${cssMentions ? `${cssMentions}\n` : ""}` +
+      `<!channel>\n` +
       `⚠️ *Existing Project Call — Meeting NOT Booked*\n` +
       `*Please follow up with this existing client*\n` +
       `_Whoever takes this, reply/react so others know it's handled._\n\n` +
