@@ -278,7 +278,7 @@ exports.lookupContact = async (req, res) => {
   try {
     const phone = String(req.query.phone || '').trim();
     const email = String(req.query.email || '').trim();
-    const phoneDigits = digits(phone);
+    const phoneTokens = buildPhoneSearchTokens(phone);
 
     const headers = {
       Authorization: `Bearer ${HUBSPOT_API_KEY}`,
@@ -289,31 +289,28 @@ exports.lookupContact = async (req, res) => {
     let foundByPhone = false;
 
     // Phone first (if provided): search by phone
-    if (phoneDigits) {
+    if (phoneTokens.length) {
       try {
         searchResp = await axios.post(
           'https://api.hubapi.com/crm/v3/objects/contacts/search',
           {
-            filterGroups: [
-              {
-                filters: [
-                  {
-                    propertyName: 'phone',
-                    operator: 'CONTAINS_TOKEN',
-                    value: phoneDigits
-                  }
-                ]
-              }
-            ],
+            // OR across all phone tokens (+1 / 1 / 10-digit variations)
+            filterGroups: phoneTokens.map((t) => ({
+              filters: [
+                {
+                  propertyName: 'phone',
+                  operator: 'CONTAINS_TOKEN',
+                  value: t
+                }
+              ]
+            })),
             properties: ['firstname', 'lastname', 'email', 'phone', 'address'],
-            limit: 1
+            limit: 10
           },
           { headers }
         );
         
-        if (searchResp?.data?.results?.length > 0) {
-          foundByPhone = true;
-        }
+        if (searchResp?.data?.results?.length > 0) foundByPhone = true;
       } catch (phoneError) {
         console.warn('Phone search failed:', phoneError?.response?.data || phoneError?.message);
       }
@@ -357,7 +354,14 @@ exports.lookupContact = async (req, res) => {
       }
     }
 
-    const contact = searchResp?.data?.results?.[0];
+    // If phone search returned multiple, prefer exact last-10 match
+    let contact = null;
+    const results = searchResp?.data?.results || [];
+    if (results.length) {
+      const wantedLast10 = digits(phone).slice(-10);
+      contact =
+        results.find((r) => digits(r?.properties?.phone).slice(-10) === wantedLast10) || results[0];
+    }
     if (!contact) {
       return res.json({ found: false });
     }
