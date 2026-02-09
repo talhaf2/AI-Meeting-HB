@@ -531,15 +531,13 @@ exports.webhookRetellExisting = async (req, res) => {
     // Base Slack message
     const baseSlackMsg =
       `📞 *Existing Project Call — AI Voice Agent*\n` +
-      `*Recording URL:* ${recordingUrl || "n/a"}\n` +
       `*Call Summary:* ${summary || "n/a"}\n` +
       `*Meeting Booked:* ${meetingBooked}\n\n` +
       `*Caller:* ${phone || 'N/A'}${clientName && clientName !== phone ? ` (${clientName})` : ''}\n` +
       `*Email:* ${email || 'N/A'}\n` +
       `*Project Address:* ${address || 'N/A'}\n` +
       `*PM:* ${pmName || 'N/A'}\n` +
-      `*Description:* ${description || 'N/A'}\n` +
-      `*Call ID:* ${callData.call_id || "n/a"}`;
+      `*Description:* ${description || 'N/A'}`;
 
     if (isBooked) {
       // Meeting was booked - send notification (booking endpoint already sends one, but this confirms)

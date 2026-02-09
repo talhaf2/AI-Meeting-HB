@@ -724,7 +724,6 @@ exports.webhookRetell = async (req, res) => {
     // Slack base message (same fields as before)
     const baseSlackMsg =
     `🤖 *Inbound call forwarded to AI*\n` +
-      `*Recording URL:* ${callData.recording_url || "n/a"}` +
       `\n*Call Summary:* ${callData?.call_analysis?.call_summary || callData.transcript || "n/a"}` +
       `\n*Meeting Booked:* ${meetingBooked}` +
       `\n\n*From:* ${callData.from_number || 'N/A'}` +
@@ -733,8 +732,7 @@ exports.webhookRetell = async (req, res) => {
       `\n*Location:* ${location || 'N/A'}` +
       `\n*User Role:* ${userRoleValue || 'N/A'}` +
       `\n*Project Type:* ${projectType || 'N/A'}` +
-      `\n*Description:* ${description || 'N/A'}` +
-      `\n\n*Call ID:* ${callData.call_id || "n/a"}`;
+      `\n*Description:* ${description || 'N/A'}`;
 
     const parseEmailList = (value) =>
       String(value || "")
@@ -874,8 +872,7 @@ exports.webhookRetell = async (req, res) => {
         `*Notes/Description:* ${description || "N/A"}\n` +
 
         `\n${hsLinks}\n` +
-        `⚠️ *Note:* Use this Booking link: (if appointment is still not booked by client) ${bookingLinkHyper}\n\n` +
-        `\n*Call ID:* ${callData.call_id || "n/a"}`;
+        `⚠️ *Note:* Use this Booking link: (if appointment is still not booked by client) ${bookingLinkHyper}\n\n`;
 
       // For "not booked" (and missed) we post:
       // - CALL_SLACK_CHANNEL_ID: keep your existing call channel posting

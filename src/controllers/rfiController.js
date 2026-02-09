@@ -1,6 +1,7 @@
 const twilio = require('twilio');
 
 let _sendSlackMessageToChannel = null;
+let _mentionByEmail = null;
 async function sendRfiSlackAlert(text) {
   const pmChannel = process.env.PM_SLACK_CHANNEL;
   if (!pmChannel) {
@@ -9,10 +10,26 @@ async function sendRfiSlackAlert(text) {
   }
 
   if (!_sendSlackMessageToChannel) {
-    ({ sendSlackMessageToChannel: _sendSlackMessageToChannel } = await import('../services/slackService.js'));
+    ({ sendSlackMessageToChannel: _sendSlackMessageToChannel, mentionByEmail: _mentionByEmail } =
+      await import('../services/slackService.js'));
   }
 
   return _sendSlackMessageToChannel(text, pmChannel);
+}
+
+function trimSummary(text, maxLen = 220) {
+  const s = String(text || '').trim();
+  if (!s) return '';
+  const oneLine = s.replace(/\s+/g, ' ');
+  return oneLine.length > maxLen ? `${oneLine.slice(0, maxLen - 1)}…` : oneLine;
+}
+
+const HUBSPOT_PORTAL_ID = process.env.HUBSPOT_PORTAL_ID || '45924609';
+function hsContactUrl(contactId) {
+  return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-1/${contactId}`;
+}
+function hsDealUrl(dealId) {
+  return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-3/${dealId}`;
 }
 
 function digitsOnly(value) {
@@ -143,10 +160,8 @@ exports.webhookRetellRfi = async (req, res) => {
       const slackMsg =
         `<!channel>\n` +
         `🧾 *RFI Support Call*\n` +
- 
-        `*Call Summary:* ${summary || 'n/a'}\n` +
-        `*Caller:* ${toE164 || phoneRaw || 'n/a'}\n`;
-  
+        `*Caller:* ${toE164 || phoneRaw || 'n/a'}\n` +
+        `\n*Next steps:* Be on the lookout for the RFI support chat email and/or call back the caller.\n` ;
 
       await sendRfiSlackAlert(slackMsg);
     } catch (e) {
