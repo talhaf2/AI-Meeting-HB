@@ -62,20 +62,20 @@ exports.webapge = async (req, res) => {
         }
 
         const contactRole = project_role_meeting === "Homeowner" ? "Homeowner" : project_role_hs_meeting;
-        const OwnerId = await getMeetingHostId(twillio_contact ||hs_object_id);
-        // 🟢 For Twillio Missed call: If both Twilio contact and a new form contact exist → merge
-        // if (twillio_contact && hs_object_id && twillio_contact !== hs_object_id) {
-        //     try {
-        //         await mergeContacts(hs_object_id, twillio_contact);
-        //         logger.info(
-        //             `Form contact ${hs_object_id} merged into Twilio contact ${twillio_contact}`
-        //         );
+        const OwnerId = await getMeetingHostId(hs_object_id);
+        // 🟢 For form filled, and twillio created: If both Twilio contact and a new form contact exist → merge
+        if (twillio_contact && hs_object_id && twillio_contact !== hs_object_id) {
+            try {
+                await mergeContacts(hs_object_id, twillio_contact);
+                logger.info(
+                    `Form contact ${hs_object_id} merged into Twilio contact ${twillio_contact}`
+                );
 
 
-        //     } catch (err) {
-        //         logger.warn("Merge step failed, continuing with fallback:", err.message);
-        //     }
-        // }
+            } catch (err) {
+                logger.warn("Merge step failed, continuing with fallback:", err.message);
+            }
+        }
 
 
         const { contactId, contactData, isNew } = await getOrCreateContact({
