@@ -62,20 +62,20 @@ exports.webapge = async (req, res) => {
         }
 
         const contactRole = project_role_meeting === "Homeowner" ? "Homeowner" : project_role_hs_meeting;
-
+        const OwnerId = await getMeetingHostId(hs_object_id || contactId);
         // 🟢 For Twillio Missed call: If both Twilio contact and a new form contact exist → merge
-        if (twillio_contact && hs_object_id && twillio_contact !== hs_object_id) {
-            try {
-                await mergeContacts(hs_object_id, twillio_contact);
-                logger.info(
-                    `Form contact ${hs_object_id} merged into Twilio contact ${twillio_contact}`
-                );
+        // if (twillio_contact && hs_object_id && twillio_contact !== hs_object_id) {
+        //     try {
+        //         await mergeContacts(hs_object_id, twillio_contact);
+        //         logger.info(
+        //             `Form contact ${hs_object_id} merged into Twilio contact ${twillio_contact}`
+        //         );
 
 
-            } catch (err) {
-                logger.warn("Merge step failed, continuing with fallback:", err.message);
-            }
-        }
+        //     } catch (err) {
+        //         logger.warn("Merge step failed, continuing with fallback:", err.message);
+        //     }
+        // }
 
 
         const { contactId, contactData, isNew } = await getOrCreateContact({
@@ -84,7 +84,7 @@ exports.webapge = async (req, res) => {
             lastname,
             phone: your_phone_number,
             role: contactRole,
-            hs_object_id: hs_object_id // prefer Twilio ID if present
+            hs_object_id: twillio_contact || hs_object_id // prefer Twilio ID if present
         });
 
         console.log({ contactId, isNew, contactData });
@@ -105,7 +105,7 @@ exports.webapge = async (req, res) => {
 
         const hasInquiry = dealname?.toLowerCase().includes("inquiry");
 
-        const OwnerId = await getMeetingHostId(hs_object_id || contactId);
+        // const OwnerId = await getMeetingHostId(hs_object_id || contactId);
         // const CSMname = await fetchCSMName(OwnerId);
         const CSMemail = await fetchCSMEmail(OwnerId);
         const CSMmention = CSMemail ? await mentionByEmail(CSMemail) : '';
