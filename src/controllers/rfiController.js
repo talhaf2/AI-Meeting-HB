@@ -1,7 +1,9 @@
 const twilio = require('twilio');
+const axios = require('axios');
 
 let _sendSlackMessageToChannel = null;
 let _mentionByEmail = null;
+let _mentionsFromEmails = null;
 async function sendRfiSlackAlert(text) {
   const pmChannel = process.env.PM_SLACK_CHANNEL;
   if (!pmChannel) {
@@ -15,6 +17,18 @@ async function sendRfiSlackAlert(text) {
   }
 
   return _sendSlackMessageToChannel(text, pmChannel);
+}
+
+async function getCsaMentions() {
+  const emails = ['angela@prostructengineering.com', 'von@prostructengineering.com', 'jeff@prostructengineering.com'];
+  try {
+    if (!_mentionsFromEmails) {
+      ({ mentionsFromEmails: _mentionsFromEmails } = await import('../services/slackService.js'));
+    }
+    return await _mentionsFromEmails(emails);
+  } catch {
+    return '';
+  }
 }
 
 function trimSummary(text, maxLen = 220) {
@@ -34,6 +48,57 @@ function hsDealUrl(dealId) {
 
 function digitsOnly(value) {
   return String(value || '').replace(/\D/g, '');
+}
+
+function buildPhoneSearchTokens(rawPhone) {
+  const d = digitsOnly(rawPhone);
+  if (!d) return [];
+  const last10 = d.length >= 10 ? d.slice(-10) : d;
+  const tokens = new Set();
+  if (d.length === 11 && d.startsWith('1')) tokens.add(d);
+  if (last10.length === 10) {
+    tokens.add(last10);
+    tokens.add(`1${last10}`);
+  } else {
+    tokens.add(d);
+  }
+  return [...tokens].filter(Boolean);
+}
+
+async function lookupContactByPhone(rawPhone) {
+  const token = process.env.HUBSPOT_API_KEY;
+  if (!token) return null;
+
+  const tokens = buildPhoneSearchTokens(rawPhone);
+  if (!tokens.length) return null;
+
+  const filterGroups = tokens.map((t) => ({
+    filters: [{ propertyName: 'phone', operator: 'CONTAINS_TOKEN', value: t }]
+  }));
+
+  const { data } = await axios.post(
+    'https://api.hubapi.com/crm/v3/objects/contacts/search',
+    {
+      filterGroups,
+      properties: ['firstname', 'lastname', 'email', 'phone'],
+      limit: 10
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+
+  const results = data?.results || [];
+  if (!results.length) return null;
+
+  const wantedLast10 = digitsOnly(rawPhone).slice(-10);
+  const best =
+    results.find((r) => digitsOnly(r?.properties?.phone).slice(-10) === wantedLast10) || results[0];
+
+  return best?.id ? best.id : null;
 }
 
 function normalizeToE164US(value) {
@@ -157,10 +222,28 @@ exports.webhookRetellRfi = async (req, res) => {
 
     // Slack alert to PM channel (tag channel)
     try {
+      const contactIdFromVars =
+        dynamicVars.contactId || dynamicVars.contact_id || dynamicVars.hs_object_id || '';
+      let contactId = contactIdFromVars;
+      if (!contactId) {
+        try {
+          contactId = await lookupContactByPhone(phoneRaw);
+        } catch (e) {
+          console.warn('[RFI webhook] contact lookup failed:', e?.response?.data || e?.message || e);
+        }
+      }
+
+      const contactLine = contactId ? `*HubSpot Contact:* <${hsContactUrl(contactId)}|View Contact>\n` : '';
+      const notFoundPrefix = !contactId
+        ? `${(await getCsaMentions()) || '<!channel>'}\n⚠️ *Contact not found by phone* — it might be a new contact.\n\n`
+        : '';
+
       const slackMsg =
+        notFoundPrefix +
         `<!channel>\n` +
         `🧾 *RFI Support Call*\n` +
         `*Caller:* ${toE164 || phoneRaw || 'n/a'}\n` +
+        (contactLine ? contactLine : '') +
         `\n*Next steps:* Be on the lookout for the RFI support chat email and/or call back the caller.\n` ;
 
       await sendRfiSlackAlert(slackMsg);

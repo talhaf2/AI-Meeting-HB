@@ -423,6 +423,32 @@ async function createOrUpdateContactAndDeal(variables, from, preferred_appointme
     }
   );
 
+  // Add unique booking link back onto the deal (uses both contact + deal id)
+  try {
+    const bookingUrl = `https://prostructengineering.com/schedule-consultation1?c=${contactId}&d=${dealCreateResp.data.id}`;
+    await axios.patch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealCreateResp.data.id}`,
+      { properties: { unique_meeting_link: bookingUrl } },
+      {
+        headers: {
+          Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    // keep local copy consistent for downstream code paths
+    dealCreateResp.data.properties = {
+      ...(dealCreateResp.data.properties || {}),
+      unique_meeting_link: bookingUrl
+    };
+  } catch (e) {
+    console.warn(
+      'Failed to set unique_meeting_link on deal',
+      dealCreateResp?.data?.id,
+      e?.response?.data || e?.message || e
+    );
+  }
+
   return { contact: contactResp.data, deal: dealCreateResp.data };
 }
 
@@ -548,6 +574,31 @@ async function updateContactAndCreateDeal(contactId, variables, from, preferred_
       }
     }
   );
+
+  // Add unique booking link back onto the deal (uses both contact + deal id)
+  try {
+    const bookingUrl = `https://prostructengineering.com/schedule-consultation1?c=${contactId}&d=${dealCreateResp.data.id}`;
+    await axios.patch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealCreateResp.data.id}`,
+      { properties: { unique_meeting_link: bookingUrl } },
+      {
+        headers: {
+          Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    dealCreateResp.data.properties = {
+      ...(dealCreateResp.data.properties || {}),
+      unique_meeting_link: bookingUrl
+    };
+  } catch (e) {
+    console.warn(
+      'Failed to set unique_meeting_link on deal',
+      dealCreateResp?.data?.id,
+      e?.response?.data || e?.message || e
+    );
+  }
 
   return { contact: contactUpdateResp.data, deal: dealCreateResp.data };
 }

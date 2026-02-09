@@ -14,6 +14,90 @@ function hsContactUrl(contactId) {
   return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-1/${contactId}`;
 }
 
+function buildPhoneSearchTokens(rawPhone) {
+  const d = digits(rawPhone);
+  if (!d) return [];
+  const last10 = d.length >= 10 ? d.slice(-10) : d;
+  const tokens = new Set();
+  if (d.length === 11 && d.startsWith('1')) tokens.add(d);
+  if (last10.length === 10) {
+    tokens.add(last10);
+    tokens.add(`1${last10}`);
+  } else {
+    tokens.add(d);
+  }
+  return [...tokens].filter(Boolean);
+}
+
+async function lookupContactByPhone(rawPhone) {
+  const tokens = buildPhoneSearchTokens(rawPhone);
+  if (!tokens.length) return null;
+
+  const headers = {
+    Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+    'Content-Type': 'application/json'
+  };
+
+  const filterGroups = tokens.map((t) => ({
+    filters: [{ propertyName: 'phone', operator: 'CONTAINS_TOKEN', value: t }]
+  }));
+
+  const { data } = await axios.post(
+    'https://api.hubapi.com/crm/v3/objects/contacts/search',
+    {
+      filterGroups,
+      properties: ['firstname', 'lastname', 'email', 'phone'],
+      limit: 10
+    },
+    { headers }
+  );
+
+  const results = data?.results || [];
+  if (!results.length) return null;
+
+  const wantedLast10 = digits(rawPhone).slice(-10);
+  const best =
+    results.find((r) => digits(r?.properties?.phone).slice(-10) === wantedLast10) || results[0];
+
+  return best?.id ? { id: best.id, properties: best.properties || {} } : null;
+}
+
+async function lookupContactByEmail(rawEmail) {
+  const email = String(rawEmail || '').trim().toLowerCase();
+  if (!email) return null;
+
+  const headers = {
+    Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+    'Content-Type': 'application/json'
+  };
+
+  const { data } = await axios.post(
+    'https://api.hubapi.com/crm/v3/objects/contacts/search',
+    {
+      filterGroups: [
+        {
+          filters: [{ propertyName: 'email', operator: 'EQ', value: email }]
+        }
+      ],
+      properties: ['firstname', 'lastname', 'email', 'phone'],
+      limit: 1
+    },
+    { headers }
+  );
+
+  const best = data?.results?.[0];
+  return best?.id ? { id: best.id, properties: best.properties || {} } : null;
+}
+
+async function csaMentions() {
+  const emails = ['angela@prostructengineering.com', 'von@prostructengineering.com', 'jeff@prostructengineering.com'];
+  try {
+    return await mentionsFromEmails(emails);
+  } catch {
+    return '';
+  }
+}
+
 // ---- PM meeting link mapping (pmKey -> slug) ----
 let _pmSlugMapCache = null;
 function getPmSlugMap() {
@@ -528,12 +612,29 @@ exports.webhookRetellExisting = async (req, res) => {
     const summary = callData.call_analysis?.call_summary || callData.transcript || '';
     const recordingUrl = callData.recording_url || '';
 
+    // Try to find HubSpot contact by caller phone first (then email if provided)
+    let contactInfo = null;
+    try {
+      contactInfo = await lookupContactByPhone(phone);
+      if (!contactInfo?.id && email) {
+        contactInfo = await lookupContactByEmail(email);
+      }
+    } catch (e) {
+      console.warn('[Existing Project] contact lookup failed:', e?.response?.data || e?.message || e);
+    }
+
+    const contactLinkLine = contactInfo?.id ? `*HubSpot Contact:* <${hsContactUrl(contactInfo.id)}|View Contact>\n` : '';
+    const notFoundPrefix = !contactInfo?.id
+      ? `${(await csaMentions()) || '<!channel>'}\n⚠️ *Contact not found by phone/email* — it might be a new contact.\n\n`
+      : '';
+
     // Base Slack message
     const baseSlackMsg =
       `📞 *Existing Project Call — AI Voice Agent*\n` +
       `*Call Summary:* ${summary || "n/a"}\n` +
       `*Meeting Booked:* ${meetingBooked}\n\n` +
       `*Caller:* ${phone || 'N/A'}${clientName && clientName !== phone ? ` (${clientName})` : ''}\n` +
+      (contactLinkLine ? contactLinkLine : '') +
       `*Email:* ${email || 'N/A'}\n` +
       `*Project Address:* ${address || 'N/A'}\n` +
       `*PM:* ${pmName || 'N/A'}\n` +
@@ -541,7 +642,7 @@ exports.webhookRetellExisting = async (req, res) => {
 
     if (isBooked) {
       // Meeting was booked - send notification (booking endpoint already sends one, but this confirms)
-      const msgBooked = `${baseSlackMsg}\n\n✅ *Meeting was successfully booked during the call.*`;
+      const msgBooked = `${notFoundPrefix}${baseSlackMsg}\n\n✅ *Meeting was successfully booked during the call.*`;
       try {
         const pmChannel = process.env.PM_SLACK_CHANNEL;
         if (pmChannel) {
@@ -561,6 +662,7 @@ exports.webhookRetellExisting = async (req, res) => {
 
     // Build follow-up message
     const followUpMsg =
+      notFoundPrefix +
       `<!channel>\n` +
       `⚠️ *Existing Project Call — Meeting NOT Booked*\n` +
       `*Please follow up with this existing client*\n` +
