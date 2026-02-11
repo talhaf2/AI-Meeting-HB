@@ -1,6 +1,6 @@
 const axios = require('axios');
 const { DateTime } = require('luxon');
-const { sendCallSlackMessage, sendSlackMessageToChannel, mentionsFromEmails } = require('../services/slackService');
+const { sendCallSlackMessage, sendSlackMessageToChannel, mentionsFromEmails, mentionByEmail } = require('../services/slackService');
 const twilio = require('twilio');
 const fs = require('fs');
 const path = require('path');
@@ -96,6 +96,75 @@ async function csaMentions() {
   } catch {
     return '';
   }
+}
+
+// ---- Owner email resolution (PM name -> email) ----
+let _ownersCache = { fetchedAtMs: 0, owners: [] };
+const OWNERS_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function normalizeName(v) {
+  return String(v || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+async function fetchHubspotOwners() {
+  const now = Date.now();
+  if (_ownersCache.owners.length && now - _ownersCache.fetchedAtMs < OWNERS_CACHE_TTL_MS) {
+    return _ownersCache.owners;
+  }
+
+  const headers = {
+    Authorization: `Bearer ${HUBSPOT_API_KEY}`,
+    'Content-Type': 'application/json'
+  };
+
+  const owners = [];
+  let after = undefined;
+  for (let i = 0; i < 20; i++) {
+    const { data } = await axios.get('https://api.hubapi.com/crm/v3/owners', {
+      headers,
+      params: {
+        limit: 500,
+        ...(after ? { after } : {})
+      }
+    });
+
+    const results = data?.results || [];
+    for (const o of results) {
+      const name = `${o.firstName || ''} ${o.lastName || ''}`.trim();
+      owners.push({
+        id: o.id,
+        name,
+        email: o.email || '',
+        active: o.active !== false
+      });
+    }
+
+    after = data?.paging?.next?.after;
+    if (!after) break;
+  }
+
+  _ownersCache = { fetchedAtMs: now, owners };
+  return owners;
+}
+
+async function resolveOwnerEmailByName(pmName) {
+  const key = normalizeName(pmName);
+  if (!key) return '';
+  if (!HUBSPOT_API_KEY) return '';
+
+  const owners = await fetchHubspotOwners();
+  if (!owners.length) return '';
+
+  // Prefer exact normalized full-name matches
+  const exact = owners.find((o) => o.active && normalizeName(o.name) === key && o.email);
+  if (exact) return exact.email;
+
+  // Fallback: contains matching (handles "Jeff" vs "Jeff Smith", etc.)
+  const contains = owners.find((o) => o.active && o.email && (normalizeName(o.name).includes(key) || key.includes(normalizeName(o.name))));
+  return contains?.email || '';
 }
 
 // ---- PM meeting link mapping (pmKey -> slug) ----
@@ -607,7 +676,18 @@ exports.webhookRetellExisting = async (req, res) => {
     const email = dynamicVars.email || '';
     const phone = callData.from_number || '';
     const address = dynamicVars.address || dynamicVars.projectAddress || '';
-    const pmName = dynamicVars.pm || dynamicVars.pmName || '';
+    // PM name can be missing even when a meeting is booked; support fallbacks.
+    const pmName =
+    dynamicVars.pm ||
+      dynamicVars.pmName ||
+      dynamicVars.pmBooked ||
+      '';
+    const pmEmail =
+      dynamicVars.pmEmail ||
+      dynamicVars.pm_email ||
+      dynamicVars.csmEmail ||
+      dynamicVars.csm_email ||
+      '';
     const description = dynamicVars.description || 'N/A';
 
     const clientName = `${firstName} ${lastName}`.trim() || (phone ? phone : 'Unknown');
@@ -615,6 +695,14 @@ exports.webhookRetellExisting = async (req, res) => {
     // Get call summary and recording
     const summary = callData.call_analysis?.call_summary || callData.transcript || '';
     const recordingUrl = callData.recording_url || '';
+
+    let pmMention = '';
+    try {
+      const resolvedEmail = pmEmail || (pmName ? await resolveOwnerEmailByName(pmName) : '');
+      if (resolvedEmail) pmMention = await mentionByEmail(resolvedEmail);
+    } catch (e) {
+      console.warn('[Existing Project] PM mention lookup failed:', e?.message || e);
+    }
 
     // Try to find HubSpot contact by caller phone first (then email if provided)
     let contactInfo = null;
@@ -634,7 +722,7 @@ exports.webhookRetellExisting = async (req, res) => {
 
     // Base Slack message
     const baseSlackMsg =
-      `📞 *Existing Project Call — AI Voice Agent*\n` +
+      `📞 *Existing Project Call — AI Voice Agent*${pmMention ? ` ${pmMention}` : ''}\n` +
       `*Call Summary:* ${summary || "n/a"}\n` +
       `*Meeting Booked:* ${meetingBooked}\n\n` +
       `*Caller:* ${phone || 'N/A'}${clientName && clientName !== phone ? ` (${clientName})` : ''}\n` +
