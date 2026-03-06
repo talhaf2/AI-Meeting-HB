@@ -17,11 +17,11 @@ async function withRetry(fn, retries, delayMs) {
 }
 
 function isBusinessHoursPacific(now = DateTime.now().setZone('America/Los_Angeles')) {
-    // Business hours: Mon–Fri, 9:00am–5:00pm Pacific (end is exclusive)
+    // Business hours: Mon–Fri, 8:30am–5:00pm Pacific (end is exclusive)
     const weekday = now.weekday; // 1=Mon ... 7=Sun
     if (weekday < 1 || weekday > 5) return false;
     const minutes = now.hour * 60 + now.minute;
-    return minutes >= 9 * 60 && minutes < 17 * 60;
+    return minutes >= (8 * 60 + 30) && minutes < 17 * 60;
 }
 
 function isTrueish(v) {
