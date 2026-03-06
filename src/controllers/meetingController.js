@@ -9,6 +9,14 @@ const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Los_Angeles'; // Pacific Time
 const HUBSPOT_PORTAL_ID = process.env.HUBSPOT_PORTAL_ID || '45924609';
 
+function isBusinessHoursPacific(now = DateTime.now().setZone('America/Los_Angeles')) {
+  // Business hours: Mon–Fri, 9:00am–5:00pm Pacific (end is exclusive)
+  const weekday = now.weekday; // 1=Mon ... 7=Sun
+  if (weekday < 1 || weekday > 5) return false;
+  const minutes = now.hour * 60 + now.minute;
+  return minutes >= 9 * 60 && minutes < 17 * 60;
+}
+
 function hsContactUrl(contactId) {
   return `https://app.hubspot.com/contacts/${HUBSPOT_PORTAL_ID}/record/0-1/${contactId}`;
 }
@@ -846,7 +854,7 @@ exports.webhookRetell = async (req, res) => {
         {
           call_status: "Ai",
           call_sid: callData.call_id || "",
-          call_picked_by: "AI"
+          call_picked_by: isBusinessHoursPacific() ? "AI" : "ai_after_business_hours"
         }
       );
 

@@ -4,8 +4,8 @@ const { getMeetingHostId, fetchCSMName, fetchCSMEmail } = require('../hubspot/ow
 const { sendSlackMessage, mentionByEmail } = require('../services/slackService');
 const { formatAppointmentTime } = require('../utils/time');
 const logger = require('../utils/logger');
-const { mergeContacts } = require('../hubspot/contactService');
 const axios = require('axios');
+const { DateTime } = require('luxon');
 const { HUB_URL, headers } = require('../../config/constants');
 
 let _withRetry = null;
@@ -14,6 +14,18 @@ async function withRetry(fn, retries, delayMs) {
         ({ withRetry: _withRetry } = await import('../utils/retry.js'));
     }
     return _withRetry(fn, retries, delayMs);
+}
+
+function isBusinessHoursPacific(now = DateTime.now().setZone('America/Los_Angeles')) {
+    // Business hours: Mon–Fri, 9:00am–5:00pm Pacific (end is exclusive)
+    const weekday = now.weekday; // 1=Mon ... 7=Sun
+    if (weekday < 1 || weekday > 5) return false;
+    const minutes = now.hour * 60 + now.minute;
+    return minutes >= 9 * 60 && minutes < 17 * 60;
+}
+
+function isTrueish(v) {
+    return v === true || v === 'true' || v === 1 || v === '1';
 }
 
 // Helper function to get deal stage
@@ -128,6 +140,17 @@ exports.webapge = async (req, res) => {
 
         await sendSlackMessage(msg);
 
+        const isRetellAppointment = isTrueish(retell_appointment_source);
+        const callPickedBy = isBusinessHoursPacific() ? "AI" : "ai_after_business_hours";
+        const callSid =
+            String(
+                req?.body?.call_sid ??
+                req?.body?.callSid ??
+                req?.body?.call_id ??
+                req?.body?.callId ??
+                ""
+            ).trim();
+
         const dealProps = {
             pipeline: "default",
             deal_association_type: "Primary Deal",
@@ -136,7 +159,14 @@ exports.webapge = async (req, res) => {
             appointment_set_: new Date(Number(hs_meeting_start_time)).toISOString(),
             customer_success_manager: OwnerId,
             project_type: type_of_project,
-            deal_address__if_different_from_contact_address_: full_project_address_webpage_meeting
+            deal_address__if_different_from_contact_address_: full_project_address_webpage_meeting,
+            ...(isRetellAppointment
+                ? {
+                    call_status: "Ai",
+                    call_sid: callSid || "",
+                    call_picked_by: callPickedBy
+                }
+                : {})
         };
 
         // const dealResult = await createOrUpdateDeal({
