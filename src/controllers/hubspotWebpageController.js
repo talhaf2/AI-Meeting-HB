@@ -137,7 +137,7 @@ exports.webapge = async (req, res) => {
         }
 
         const contactRole = project_role_meeting === "Homeowner" ? "Homeowner" : project_role_hs_meeting;
-        const OwnerId = await getMeetingHostId(preferredContactId);
+        const OwnerId = await getMeetingHostId(hs_object_id);
 
         let mergeFailed = false;
         if (twillio_contact && hs_object_id && twillio_contact !== hs_object_id) {
