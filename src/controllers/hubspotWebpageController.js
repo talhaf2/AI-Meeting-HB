@@ -4,6 +4,7 @@ const { getMeetingHostId, fetchCSMName, fetchCSMEmail } = require('../hubspot/ow
 const { sendSlackMessage, mentionByEmail } = require('../services/slackService');
 const { formatAppointmentTime } = require('../utils/time');
 const logger = require('../utils/logger');
+const { mergeContacts } = require('../hubspot/contactService');
 const axios = require('axios');
 const { DateTime } = require('luxon');
 const { HUB_URL, headers } = require('../../config/constants');
@@ -26,6 +27,54 @@ function isBusinessHoursPacific(now = DateTime.now().setZone('America/Los_Angele
 
 function isTrueish(v) {
     return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+async function postErrorAlert(text) {
+    const channel = process.env.ERROR_AND_ALERTS_CHANNEL;
+    const token = process.env.SLACK_BOT_TOKEN;
+    if (!channel || !token) return;
+    try {
+        await axios.post(
+            'https://slack.com/api/chat.postMessage',
+            { channel, text, mrkdwn: true },
+            { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+        );
+    } catch (e) {
+        console.warn('[ERROR_AND_ALERTS_CHANNEL] Slack post failed:', e?.response?.data || e?.message || e);
+    }
+}
+
+async function findContactIdByEmail(email) {
+    const value = String(email || '').trim().toLowerCase();
+    if (!value) return null;
+    try {
+        const { data } = await withRetry(() =>
+            axios.post(
+                `${HUB_URL}/contacts/search`,
+                {
+                    filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value }] }],
+                    properties: ['email'],
+                    limit: 5
+                },
+                { headers }
+            )
+        );
+        const results = data?.results || [];
+        return results?.[0]?.id || null;
+    } catch {
+        return null;
+    }
+}
+
+async function clearContactEmail(contactId) {
+    if (!contactId) return;
+    await withRetry(() =>
+        axios.patch(
+            `${HUB_URL}/contacts/${contactId}`,
+            { properties: { email: '' } },
+            { headers }
+        )
+    );
 }
 
 // Helper function to get deal stage
@@ -69,23 +118,42 @@ exports.webapge = async (req, res) => {
         console.log('req.body', req.body);
         
 
-        if (!email && !hs_object_id) {
-            return res.status(400).json({ error: "Missing 'email' or 'hs_object_id'" });
+        /**
+         * This webhook can be triggered by:
+         * - Retell AI booked meeting (retell_appointment_source=true; twillio_* usually null)
+         * - Thinlink / HubSpot booking flow (twillio_* null)
+         * - Booking for an already-created contact/deal (twillio_contact/twillio_deal present)
+         *
+         * Requirements:
+         * - If `twillio_deal` is present, we must update that deal (unless it's already "signed").
+         * - Contact merge is best-effort; if it fails we continue and alert.
+         */
+
+        const preferredContactId = twillio_contact || hs_object_id;
+        const preferredDealId = twillio_deal;
+
+        if (!email && !preferredContactId) {
+            return res.status(400).json({ error: "Missing 'email' or contact id" });
         }
 
         const contactRole = project_role_meeting === "Homeowner" ? "Homeowner" : project_role_hs_meeting;
-        const OwnerId = await getMeetingHostId(hs_object_id);
-        // 🟢 For form filled, and twillio created: If both Twilio contact and a new form contact exist → merge
+        const OwnerId = await getMeetingHostId(preferredContactId);
+
+        let mergeFailed = false;
         if (twillio_contact && hs_object_id && twillio_contact !== hs_object_id) {
             try {
-                await mergeContacts(hs_object_id, twillio_contact);
-                logger.info(
-                    `Form contact ${hs_object_id} merged into Twilio contact ${twillio_contact}`
-                );
-
-
+                // Merge booking-form contact INTO canonical (twillio_contact)
+                await mergeContacts(twillio_contact, hs_object_id);
+                logger.info(`Merged form contact ${hs_object_id} into canonical contact ${twillio_contact}`);
             } catch (err) {
-                logger.warn("Merge step failed, continuing with fallback:", err.message);
+                mergeFailed = true;
+                logger.warn("Merge step failed, continuing with fallback:", err?.message || err);
+                await postErrorAlert(
+                    `🚨 *HubSpot merge failed (webpage webhook)*\n` +
+                    `*canonical contact:* ${twillio_contact}\n` +
+                    `*form contact:* ${hs_object_id}\n` +
+                    `*error:* ${err?.response?.data?.message || err?.message || 'unknown'}`
+                );
             }
         }
 
@@ -96,20 +164,59 @@ exports.webapge = async (req, res) => {
             lastname,
             phone: your_phone_number,
             role: contactRole,
-            hs_object_id: twillio_contact || hs_object_id // prefer Twilio ID if present
+            hs_object_id: preferredContactId
         });
 
         console.log({ contactId, isNew, contactData });
         
 
-        if (!isNew) {
-            await updateContact(contactId, {
-                firstname,
-                lastname,
-                email,
-                phone: your_phone_number,
-                project_role__sales_rep: contactRole
-            });
+        // Contact update should never prevent deal update.
+        try {
+            if (!isNew) {
+                await updateContact(contactId, {
+                    firstname,
+                    lastname,
+                    email,
+                    phone: your_phone_number,
+                    project_role__sales_rep: contactRole
+                });
+            }
+        } catch (err) {
+            await postErrorAlert(
+                `🚨 *HubSpot contact update failed (webpage webhook)*\n` +
+                `*contactId:* ${contactId}\n` +
+                `*email:* ${email || 'n/a'}\n` +
+                `*error:* ${err?.response?.data?.message || err?.message || 'unknown'}`
+            );
+
+            // Fallback requested: if merge failed, try to clear the email-owner contact then update canonical.
+            if (mergeFailed && twillio_contact && email) {
+                try {
+                    const emailOwnerId = await findContactIdByEmail(email);
+                    if (emailOwnerId && String(emailOwnerId) !== String(twillio_contact)) {
+                        await clearContactEmail(emailOwnerId);
+                        await postErrorAlert(
+                            `⚠️ *Fallback:* cleared email on contact ${emailOwnerId} to update canonical contact ${twillio_contact}\n` +
+                            `*email:* ${email}`
+                        );
+                    }
+
+                    await updateContact(twillio_contact, {
+                        firstname,
+                        lastname,
+                        email,
+                        phone: your_phone_number,
+                        project_role__sales_rep: contactRole
+                    });
+                } catch (fallbackErr) {
+                    await postErrorAlert(
+                        `🚨 *Fallback failed (webpage webhook)*\n` +
+                        `*canonical contact:* ${twillio_contact}\n` +
+                        `*email:* ${email}\n` +
+                        `*error:* ${fallbackErr?.response?.data?.message || fallbackErr?.message || 'unknown'}`
+                    );
+                }
+            }
         }
 
         // const dealIds = await getAssociatedDeals(contactId);
@@ -178,7 +285,7 @@ exports.webapge = async (req, res) => {
         // });
 
         // Check if deal should be updated - skip if current dealstage is "199684762"
-        const dealIdToCheck = twillio_deal || hs_object_id_deal;
+        const dealIdToCheck = preferredDealId;
         let dealResult = null;
 
         if (dealIdToCheck) {
@@ -193,20 +300,37 @@ exports.webapge = async (req, res) => {
             }
         }
 
-        dealResult = await createOrUpdateDeal({
-            retell_appointment_source,
-            shouldUpdate: hasInquiry,
-            twilioDealId: twillio_deal || null,    // 👈 authoritative if present
-            latestDealId: hs_object_id_deal || null,
-            email,
-            dealProps,
-            contactId
-        });
+        try {
+            dealResult = await createOrUpdateDeal({
+                retell_appointment_source,
+                shouldUpdate: hasInquiry,
+                // IMPORTANT: dealService will ALWAYS update twilioDealId if present.
+                twilioDealId: twillio_deal || null,
+                latestDealId: hs_object_id_deal || null,
+                email,
+                dealProps,
+                contactId
+            });
+        } catch (err) {
+            await postErrorAlert(
+                `🚨 *HubSpot deal update/create failed (webpage webhook)*\n` +
+                `*twillio_deal:* ${twillio_deal || 'n/a'}\n` +
+                `*hs_object_id_deal:* ${hs_object_id_deal || 'n/a'}\n` +
+                `*error:* ${err?.response?.data?.message || err?.message || 'unknown'}`
+            );
+            throw err;
+        }
 
 
         res.json({ contact: contactData, deal: dealResult });
     } catch (err) {
         logger.error('Webhook processing error', err.response?.data || err);
+        try {
+            await postErrorAlert(
+                `🚨 *Webhook processing error (webpage webhook)*\n` +
+                `*error:* ${err?.response?.data?.message || err?.message || 'unknown'}`
+            );
+        } catch {}
         res.status(500).json({ error: err.message });
     }
 };
