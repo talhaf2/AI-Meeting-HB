@@ -382,7 +382,7 @@ exports.webapgeOutcomeChange = async (req, res) => {
             `Address: ${full_project_address_webpage_meeting || 'N/A'}`;
 
 
-        await sendSlackMessage(msg);
+        // await sendSlackMessage(msg);
 
         // Check if deal should be updated - skip if current dealstage is "199684762"
         if (hs_object_id_deal) {
