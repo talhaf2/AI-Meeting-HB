@@ -90,7 +90,7 @@ async function lookupContactByEmail(rawEmail) {
 }
 
 async function csaMentions() {
-  const emails = ['angela@prostructengineering.com', 'von@prostructengineering.com', 'jeff@prostructengineering.com'];
+  const emails = ['christine.m@prostructengineering.com', 'angela@prostructengineering.com', 'von@prostructengineering.com'];
   try {
     return await mentionsFromEmails(emails);
   } catch {
