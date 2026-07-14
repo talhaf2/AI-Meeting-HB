@@ -112,3 +112,34 @@ exports.createOrUpdateDeal = async ({
     throw err;
   }
 };
+
+/**
+ * Directly update properties on an existing, known deal ID.
+ *
+ * Unlike `createOrUpdateDeal`, this NEVER creates a new deal and NEVER
+ * touches associations. Use this whenever you already know the exact
+ * deal ID you want to update (e.g. reschedule/cancel flows), so this
+ * stays fully isolated from the create/update-or-create logic above.
+ */
+exports.updateDealProperties = async (dealId, properties) => {
+  if (!dealId) {
+    throw new Error('updateDealProperties: dealId is required');
+  }
+
+  try {
+    const { data } = await withRetry(() =>
+      axios.patch(
+        `${HUB_URL}/deals/${dealId}`,
+        { properties },
+        { headers }
+      )
+    );
+    return data;
+  } catch (err) {
+    logger.error(
+      `[updateDealProperties] Failed to update deal ${dealId}`,
+      err?.response?.data || err?.message || err
+    );
+    throw err;
+  }
+};

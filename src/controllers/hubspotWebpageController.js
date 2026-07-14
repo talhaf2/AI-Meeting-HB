@@ -1,5 +1,5 @@
 const { getOrCreateContact, updateContact } = require('../hubspot/contactService');
-const { getAssociatedDeals, getLatestDeal, createOrUpdateDeal } = require('../hubspot/dealService');
+const { getAssociatedDeals, getLatestDeal, createOrUpdateDeal, updateDealProperties } = require('../hubspot/dealService');
 const { getMeetingHostId, fetchCSMName, fetchCSMEmail } = require('../hubspot/ownerService');
 const { sendSlackMessage, mentionByEmail } = require('../services/slackService');
 const { formatAppointmentTime } = require('../utils/time');
@@ -87,6 +87,24 @@ async function getDealStage(dealId) {
     } catch (err) {
         logger.error(`Failed to fetch deal stage for deal ${dealId}`, err.response?.data || err);
         return null;
+    }
+}
+
+// Same as getDealStage, but also returns appointment_set_ - used by the
+// reschedule/cancel flow to detect duplicate webhook fires (idempotency),
+// since HubSpot workflows can re-send the same webhook action more than once.
+async function getDealStageAndAppointmentTime(dealId) {
+    try {
+        const { data } = await withRetry(() =>
+            axios.get(`${HUB_URL}/deals/${dealId}?properties=dealstage,appointment_set_`, { headers })
+        );
+        return {
+            dealstage: data.properties?.dealstage || null,
+            appointment_set_: data.properties?.appointment_set_ || null
+        };
+    } catch (err) {
+        logger.error(`[outcome-changed] Failed to fetch deal stage/appointment time for deal ${dealId}`, err.response?.data || err);
+        return { dealstage: null, appointment_set_: null };
     }
 }
 
@@ -335,6 +353,31 @@ exports.webapge = async (req, res) => {
     }
 };
 
+// Stage IDs used specifically by the reschedule/cancel flow below.
+const APPOINTMENT_SET_STAGE = "contractsent"; // "Appointment Set"
+const SIGNED_STAGE = "199684762"; // "Signed" - never touched by this flow
+
+/**
+ * Handles HubSpot "meeting rescheduled/canceled" workflow webhook.
+ *
+ * This is intentionally isolated from `createOrUpdateDeal` (used by `webapge`)
+ * because that helper's job is "create a new deal, or update the Twilio deal
+ * if present" - it is NOT meant to update an arbitrary existing deal by ID.
+ * Reusing it here was the root cause of reschedule/cancel events either
+ * silently no-oping or creating duplicate/unassociated deals instead of
+ * updating the deal the meeting actually belongs to.
+ *
+ * Flow:
+ * 1. We know exactly which deal to update: `hs_object_id_deal` from the payload
+ *    (this is the deal HubSpot fired the workflow off of).
+ * 2. Before writing anything, we fetch the deal's LIVE stage from HubSpot
+ *    (not the `current_dealstage` field from the payload, which can be stale -
+ *    it reflects the stage at workflow enrollment time, not execution time).
+ * 3. We only update dealstage + appointment_set_ time if that live stage is
+ *    still "Appointment Set" (contractsent). If it's already "Signed", or if
+ *    it has moved to some other stage, we skip and log why - so a late/duplicate
+ *    workflow run can never overwrite a stage the team has since progressed.
+ */
 exports.webapgeOutcomeChange = async (req, res) => {
     try {
         const {
@@ -349,10 +392,47 @@ exports.webapgeOutcomeChange = async (req, res) => {
             dealname,
             hs_meeting_outcome,
             hs_meeting_start_time,
-            current_dealstage
         } = req.body;
 
-        if (current_dealstage !== "contractsent") { return res.json({ message: "Appointment not set" }); }
+        console.log('[outcome-changed] req.body', req.body);
+
+        if (!hs_object_id_deal) {
+            logger.warn('[outcome-changed] Missing hs_object_id_deal in payload; nothing to update');
+            return res.status(400).json({ message: "Missing hs_object_id_deal" });
+        }
+
+        // Live check: what stage (and appointment time) is this deal ACTUALLY in right now?
+        const { dealstage: liveDealStage, appointment_set_: liveApptSetRaw } =
+            await getDealStageAndAppointmentTime(hs_object_id_deal);
+
+        if (liveDealStage === SIGNED_STAGE) {
+            logger.info(`[outcome-changed] Skipping deal ${hs_object_id_deal} - live stage is "Signed" (${SIGNED_STAGE})`);
+            return res.json({
+                deal: { id: hs_object_id_deal, message: `Deal update skipped - stage is "${SIGNED_STAGE}" (Signed)` }
+            });
+        }
+
+        if (liveDealStage !== APPOINTMENT_SET_STAGE) {
+            logger.info(`[outcome-changed] Skipping deal ${hs_object_id_deal} - live stage is "${liveDealStage || 'unknown'}", expected "${APPOINTMENT_SET_STAGE}" (Appointment Set)`);
+            return res.json({ message: `Appointment not set (live stage: ${liveDealStage || 'unknown'})` });
+        }
+
+        // Idempotency guard: HubSpot workflows can re-fire the same webhook action
+        // more than once for the same run (retries, re-evaluation, etc). Cancel events
+        // are naturally deduped above (stage moves off "contractsent" after the first
+        // success), but reschedule events keep the deal in "contractsent" - so a
+        // duplicate fire with the SAME meeting time must be caught explicitly here,
+        // otherwise it would post to Slack and re-write HubSpot again every time.
+        if (hs_meeting_outcome !== "CANCELED") {
+            const newApptTimeMs = Number(hs_meeting_start_time);
+            const currentApptTimeMs = liveApptSetRaw ? new Date(liveApptSetRaw).getTime() : null;
+            if (newApptTimeMs && currentApptTimeMs === newApptTimeMs) {
+                logger.info(`[outcome-changed] Skipping deal ${hs_object_id_deal} - duplicate webhook fire, appointment_set_ already equals ${new Date(newApptTimeMs).toISOString()}`);
+                return res.json({
+                    deal: { id: hs_object_id_deal, message: 'Deal update skipped - duplicate webhook, already up to date' }
+                });
+            }
+        }
 
         const contactName = `${firstname} ${lastname || ""}`;
         const formattedTime = formatAppointmentTime(hs_meeting_start_time);
@@ -367,7 +447,7 @@ exports.webapgeOutcomeChange = async (req, res) => {
         } else {
             title = 'From Huspot Appointments - Meeting Rescheduled\n'
             d_t = `Date/time: *${formattedTime}*\n\n`
-            dealstage = "contractsent"
+            dealstage = APPOINTMENT_SET_STAGE
         }
 
         const msg =
@@ -381,37 +461,43 @@ exports.webapgeOutcomeChange = async (req, res) => {
             `Email: ${email || 'N/A'}\n` +
             `Address: ${full_project_address_webpage_meeting || 'N/A'}`;
 
-
-        // await sendSlackMessage(msg);
-
-        // Check if deal should be updated - skip if current dealstage is "199684762"
-        if (hs_object_id_deal) {
-            const currentDealStage = await getDealStage(hs_object_id_deal);
-            if (currentDealStage === "199684762") {
-                logger.info(`Skipping deal update for deal ${hs_object_id_deal} - current stage is "199684762"`);
-                // Return early without updating the deal
-                return res.json({ 
-                    deal: { id: hs_object_id_deal, message: 'Deal update skipped - stage is "199684762"' }
-                });
-            }
-        }
-
         const dealProps = {
             dealstage: dealstage,
+            // Only reached because we already confirmed live stage === APPOINTMENT_SET_STAGE above.
             appointment_set_: new Date(Number(hs_meeting_start_time)).toISOString(),
         };
 
-        const dealResult = await createOrUpdateDeal({
-            shouldUpdate: true,
-            latestDealId: hs_object_id_deal,
-            email,
-            dealProps,
-            hs_object_id
-        });
+        let dealResult;
+        try {
+            dealResult = await updateDealProperties(hs_object_id_deal, dealProps);
+        } catch (err) {
+            logger.error(`[outcome-changed] Failed to update deal ${hs_object_id_deal} (outcome=${hs_meeting_outcome || 'RESCHEDULED'})`, err?.response?.data || err?.message || err);
+            await postErrorAlert(
+                `🚨 *Outcome-changed: deal update failed*\n` +
+                `*dealId:* ${hs_object_id_deal}\n` +
+                `*outcome:* ${hs_meeting_outcome || 'RESCHEDULED'}\n` +
+                `*error:* ${err?.response?.data?.message || err?.message || 'unknown'}`
+            );
+            return res.status(500).json({ error: err?.response?.data?.message || err?.message || 'Failed to update deal' });
+        }
+
+        // Only post to Slack AFTER a successful, non-duplicate update, so a failed
+        // write or a re-fired webhook can never cause a duplicate/misleading message.
+        try {
+            await sendSlackMessage(msg);
+        } catch (err) {
+            logger.warn('[outcome-changed] Slack post failed (deal was still updated)', err?.response?.data || err?.message || err);
+        }
 
         res.json({ deal: dealResult });
     } catch (err) {
-        logger.error('Webhook processing error', err.response?.data || err);
+        logger.error('[outcome-changed] Webhook processing error', err?.response?.data || err?.message || err);
+        try {
+            await postErrorAlert(
+                `🚨 *Outcome-changed: unexpected webhook error*\n` +
+                `*error:* ${err?.response?.data?.message || err?.message || 'unknown'}`
+            );
+        } catch {}
         res.status(500).json({ error: err.message });
     }
 };
