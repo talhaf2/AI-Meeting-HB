@@ -6,6 +6,8 @@ const hubspotWebpageRoutes = require('./src/routers/hubspotWebpgaeRoutes');
 const existingProjectRoutes = require('./src/routers/existingProjectRoutes');
 const dispositioningRoutes = require('./src/routers/dispositioningRoutes');
 const rfiRoutes = require('./src/routers/rfiRoutes');
+const calendarStatusRoutes = require('./src/routers/calendarStatusRoutes');
+const { startCalendarStatusMonitor } = require('./src/services/roundRobinCalendarMonitor');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -24,7 +26,11 @@ app.use('/api/hubspot-webpage', hubspotWebpageRoutes);
 app.use('/api/existing', existingProjectRoutes);
 app.use('/api/dispositioning', dispositioningRoutes);
 app.use('/api/rfi', rfiRoutes);
+app.use('/api/calendar-status', calendarStatusRoutes);
 
 app.listen(port, () => {
     console.log(`Server running at: ${port}`);
 });
+
+// Background: round-robin calendar disconnection monitor (HubSpot -> Slack)
+startCalendarStatusMonitor();
