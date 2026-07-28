@@ -782,6 +782,7 @@ exports.webhookRetellExisting = async (req, res) => {
     ].filter(Boolean).join('\n');
 
     const followUpBlocks = [
+      { type: 'divider' },
       {
         type: 'section',
         text: { type: 'mrkdwn', text: headerParts.join('\n') }
@@ -795,7 +796,8 @@ exports.webhookRetellExisting = async (req, res) => {
       {
         type: 'section',
         text: { type: 'mrkdwn', text: nextStepsText }
-      }
+      },
+      { type: 'divider' }
     ];
 
     const pmChannel = process.env.PM_SLACK_CHANNEL;

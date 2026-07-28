@@ -260,6 +260,7 @@ exports.webapge = async (req, res) => {
             `Name: ${contactName}`;
 
         const blocks = [
+            { type: "divider" },
             {
                 type: "section",
                 text: {
@@ -290,7 +291,8 @@ exports.webapge = async (req, res) => {
                         `*Email:* ${email || 'N/A'}\n` +
                         `*Address:* ${full_project_address_webpage_meeting || 'N/A'}`
                 }
-            }
+            },
+            { type: "divider" }
         ];
 
         await sendSlackMessage(msg, blocks);

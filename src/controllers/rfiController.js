@@ -255,6 +255,7 @@ exports.webhookRetellRfi = async (req, res) => {
       ].filter(Boolean).join('\n');
 
       const blocks = [
+        { type: 'divider' },
         {
           type: 'section',
           text: { type: 'mrkdwn', text: headerText }
@@ -266,7 +267,8 @@ exports.webhookRetellRfi = async (req, res) => {
             type: 'mrkdwn',
             text: `*Next steps:* Be on the lookout for the RFI support chat email and/or call back the caller.`
           }
-        }
+        },
+        { type: 'divider' }
       ];
 
       await sendRfiSlackAlert(slackMsg, blocks);

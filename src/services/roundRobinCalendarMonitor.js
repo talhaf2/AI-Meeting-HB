@@ -174,6 +174,7 @@ async function sendDisconnectAlert({ name, email }) {
     `${displayName}, your calendar isn't syncing with HubSpot right now.`;
 
   const blocks = [
+    { type: 'divider' },
     {
       type: 'section',
       text: {
@@ -202,7 +203,8 @@ async function sendDisconnectAlert({ name, email }) {
         type: 'mrkdwn',
         text: `React with :+1: so others know it's handled.`
       }
-    }
+    },
+    { type: 'divider' }
   ];
 
   await postAlert(fallbackText, blocks);
