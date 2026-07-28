@@ -250,20 +250,50 @@ exports.webapge = async (req, res) => {
         const contactName = `${firstname} ${lastname || ""}`;
 
         const formattedTime = formatAppointmentTime(hs_meeting_start_time);
+        const appointmentFor = CSMmention || CSMemail || '';
 
+        // Plain-text fallback for Slack notifications / accessibility.
         const msg =
-            `<https://app.hubspot.com/contacts/45924609/record/0-1/${contactId}>\n\n` +
             `From Huspot Appointments\n` +
-            `Appointment set for ${CSMmention ? `${CSMmention}\n` : CSMemail ? CSMemail : ''}\n` +
-            `Date/time: *${formattedTime}*\n\n` +
-            `Scope of Work: ${project_description_webpage_meeting || 'N/A'}\n\n` +
-            `Name: ${contactName}\n` +
-            `Number: ${your_phone_number || 'N/A'}\n` +
-            `Email: ${email || 'N/A'}\n` +
-            `Address: ${full_project_address_webpage_meeting || 'N/A'}`;
+            `Appointment set for ${appointmentFor}\n` +
+            `Date/time: ${formattedTime}\n` +
+            `Name: ${contactName}`;
 
+        const blocks = [
+            {
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text:
+                        `<https://app.hubspot.com/contacts/45924609/record/0-1/${contactId}|View Contact>\n` +
+                        `*From Huspot Appointments*\n` +
+                        `Appointment set for ${appointmentFor}\n` +
+                        `Date/time: *${formattedTime}*`
+                }
+            },
+            { type: "divider" },
+            {
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text: `*Scope of Work:*\n${project_description_webpage_meeting || 'N/A'}`
+                }
+            },
+            { type: "divider" },
+            {
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text:
+                        `*Name:* ${contactName}\n` +
+                        `*Number:* ${your_phone_number || 'N/A'}\n` +
+                        `*Email:* ${email || 'N/A'}\n` +
+                        `*Address:* ${full_project_address_webpage_meeting || 'N/A'}`
+                }
+            }
+        ];
 
-        await sendSlackMessage(msg);
+        await sendSlackMessage(msg, blocks);
 
         const isRetellAppointment = isTrueish(retell_appointment_source);
         const callPickedBy = isBusinessHoursPacific() ? "AI" : "ai_after_business_hours";

@@ -752,21 +752,57 @@ exports.webhookRetellExisting = async (req, res) => {
     // Meeting was NOT booked - send follow-up notification
     console.log("Existing project: Meeting was not booked, sending follow-up notification");
 
-    // Build follow-up message
-    const followUpMsg =
-      notFoundPrefix +
-      `<!channel>\n` +
-      `⚠️ *Existing Project Call — Meeting NOT Booked*\n` +
-      `*Please follow up with this existing client*\n` +
-      `_Whoever takes this, reply/react so others know it's handled._\n\n` +
-      `${baseSlackMsg}\n\n` +
+    const callerLine = `*Caller:* ${phone || 'N/A'}${clientName && clientName !== phone ? ` (${clientName})` : ''}`;
+    const nextStepsText =
       `*Next Steps:* Contact the client to schedule a meeting with ${pmName || 'their PM'} for their project at ${address || 'the listed address'}.`;
+
+    const followUpMsg =
+      `⚠️ Existing Project Call — Meeting NOT Booked\n` +
+      `Caller: ${phone || 'N/A'}\n` +
+      `Please follow up with this existing client`;
+
+    const headerParts = [
+      notFoundPrefix.trim(),
+      '<!channel>',
+      '⚠️ *Existing Project Call — Meeting NOT Booked*',
+      '*Please follow up with this existing client*',
+      `_Whoever takes this, reply/react so others know it's handled._`
+    ].filter(Boolean);
+
+    const detailsText = [
+      `📞 *Existing Project Call — AI Voice Agent*${pmMention ? ` ${pmMention}` : ''}`,
+      `*Call Summary:* ${summary || 'n/a'}`,
+      `*Meeting Booked:* ${meetingBooked}`,
+      callerLine,
+      contactLinkLine ? contactLinkLine.trim() : '',
+      `*Email:* ${email || 'N/A'}`,
+      `*Project Address:* ${address || 'N/A'}`,
+      `*PM:* ${pmName || 'N/A'}`,
+      `*Description:* ${description || 'N/A'}`
+    ].filter(Boolean).join('\n');
+
+    const followUpBlocks = [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: headerParts.join('\n') }
+      },
+      { type: 'divider' },
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: detailsText }
+      },
+      { type: 'divider' },
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: nextStepsText }
+      }
+    ];
 
     const pmChannel = process.env.PM_SLACK_CHANNEL;
     if (pmChannel) {
-      await sendSlackMessageToChannel(followUpMsg, pmChannel);
+      await sendSlackMessageToChannel(followUpMsg, pmChannel, followUpBlocks);
     } else {
-      await sendCallSlackMessage(followUpMsg);
+      await sendSlackMessageToChannel(followUpMsg, process.env.CALL_SLACK_CHANNEL_ID, followUpBlocks);
     }
     console.log("Existing project: Follow-up notification sent to Slack");
 

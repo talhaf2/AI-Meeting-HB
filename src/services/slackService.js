@@ -8,21 +8,28 @@ const queue = new PQueue({ concurrency: 1, interval: 1000 });
 /**
  * Post a Slack message to an explicit channel ID.
  * Use this to support multi-channel posting while keeping existing env-based defaults.
+ * Optional `blocks` enables Block Kit (e.g. dividers). `text` is always sent as the
+ * notification/fallback preview.
  */
-export async function sendSlackMessageToChannel(text, channel) {
+export async function sendSlackMessageToChannel(text, channel, blocks) {
   if (!channel) {
     throw new Error("Slack channel ID is missing");
+  }
+
+  const payload = {
+    channel,
+    text,
+    mrkdwn: true,
+  };
+  if (Array.isArray(blocks) && blocks.length) {
+    payload.blocks = blocks;
   }
 
   return queue.add(() =>
     withRetry(() =>
       axios.post(
         "https://slack.com/api/chat.postMessage",
-        {
-          channel,
-          text,
-          mrkdwn: true,
-        },
+        payload,
         {
           headers: {
             Authorization: `Bearer ${SLACK_BOT_TOKEN}`,
@@ -34,8 +41,8 @@ export async function sendSlackMessageToChannel(text, channel) {
   );
 }
 
-export async function sendSlackMessage(text) {
-  return sendSlackMessageToChannel(text, SLACK_CHANNEL_ID);
+export async function sendSlackMessage(text, blocks) {
+  return sendSlackMessageToChannel(text, SLACK_CHANNEL_ID, blocks);
 }
 
 export async function sendCallSlackMessage(text) {

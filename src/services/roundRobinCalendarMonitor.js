@@ -43,16 +43,16 @@ async function getMention(email) {
   }
 }
 
-async function postAlert(text) {
+async function postAlert(text, blocks) {
   if (!ALERT_CHANNEL) {
-    logger.warn('[calendar-monitor] CALENDAR_ALERTS_CHANNEL is not set; skipping Slack alert');
+    logger.warn('[calendar-monitor] SLACK_CHANNEL_ID is not set; skipping Slack alert');
     return;
   }
   try {
     if (!_sendSlackMessageToChannel) {
       ({ sendSlackMessageToChannel: _sendSlackMessageToChannel } = await import('./slackService.js'));
     }
-    await _sendSlackMessageToChannel(text, ALERT_CHANNEL);
+    await _sendSlackMessageToChannel(text, ALERT_CHANNEL, blocks);
   } catch (err) {
     logger.error('[calendar-monitor] Failed to post Slack alert', err?.response?.data || err?.message || err);
   }
@@ -167,16 +167,45 @@ async function sendDisconnectAlert({ name, email }) {
   ).filter(Boolean);
 
   const tagLine = [personMention, ...otherMentions].join(' ');
+  const displayName = name || 'Hi';
 
-  await postAlert(
-    `${tagLine}\n` +
-    `⚠️ *Calendar disconnected in HubSpot*\n` +
-    `${name || 'Hi'}, your calendar isn't syncing with HubSpot right now, so meetings may get booked on your queues without actually landing on your calendar.\n\n` +
-    `*How to reconnect:*\n` +
-    `1. In HubSpot, go to Settings → General → Calendar\n` +
-    `2. Under Calendar sync, reconnect your calendar\n\n` +
-    `React with :+1: so others know it's handled.`
-  );
+  const fallbackText =
+    `⚠️ Calendar disconnected in HubSpot\n` +
+    `${displayName}, your calendar isn't syncing with HubSpot right now.`;
+
+  const blocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `${tagLine}\n` +
+          `⚠️ *Calendar disconnected in HubSpot*\n` +
+          `${displayName}, your calendar isn't syncing with HubSpot right now, so meetings may get booked on your queues without actually landing on your calendar.`
+      }
+    },
+    { type: 'divider' },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text:
+          `*How to reconnect:*\n` +
+          `1. In HubSpot, go to Settings → General → Calendar\n` +
+          `2. Under Calendar sync, reconnect your calendar`
+      }
+    },
+    { type: 'divider' },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `React with :+1: so others know it's handled.`
+      }
+    }
+  ];
+
+  await postAlert(fallbackText, blocks);
 }
 
 let _timeoutHandle = null;

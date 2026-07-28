@@ -4,7 +4,7 @@ const axios = require('axios');
 let _sendSlackMessageToChannel = null;
 let _mentionByEmail = null;
 let _mentionsFromEmails = null;
-async function sendRfiSlackAlert(text) {
+async function sendRfiSlackAlert(text, blocks) {
   const pmChannel = process.env.PM_SLACK_CHANNEL;
   if (!pmChannel) {
     console.warn('[RFI Slack] PM_SLACK_CHANNEL is not set; skipping Slack alert');
@@ -16,7 +16,7 @@ async function sendRfiSlackAlert(text) {
       await import('../services/slackService.js'));
   }
 
-  return _sendSlackMessageToChannel(text, pmChannel);
+  return _sendSlackMessageToChannel(text, pmChannel, blocks);
 }
 
 async function getCsaMentions() {
@@ -233,20 +233,43 @@ exports.webhookRetellRfi = async (req, res) => {
         }
       }
 
-      const contactLine = contactId ? `*HubSpot Contact:* <${hsContactUrl(contactId)}|View Contact>\n` : '';
-      const notFoundPrefix = !contactId
-        ? `${(await getCsaMentions()) || '<!channel>'}\n⚠️ *Contact not found by phone* — it might be a new contact.\n\n`
+      const caller = toE164 || phoneRaw || 'n/a';
+      const contactLine = contactId
+        ? `*HubSpot Contact:* <${hsContactUrl(contactId)}|View Contact>`
+        : '';
+      const notFoundLine = !contactId
+        ? `${(await getCsaMentions()) || '<!channel>'}\n⚠️ *Contact not found by phone* — it might be a new contact.`
         : '';
 
       const slackMsg =
-        notFoundPrefix +
-        `<!channel>\n` +
-        `🧾 *RFI Support Call*\n` +
-        `*Caller:* ${toE164 || phoneRaw || 'n/a'}\n` +
-        (contactLine ? contactLine : '') +
-        `\n*Next steps:* Be on the lookout for the RFI support chat email and/or call back the caller.\n` ;
+        `🧾 RFI Support Call\n` +
+        `Caller: ${caller}\n` +
+        `Next steps: Be on the lookout for the RFI support chat email and/or call back the caller.`;
 
-      await sendRfiSlackAlert(slackMsg);
+      const headerText = [
+        notFoundLine,
+        '<!channel>',
+        '🧾 *RFI Support Call*',
+        `*Caller:* ${caller}`,
+        contactLine
+      ].filter(Boolean).join('\n');
+
+      const blocks = [
+        {
+          type: 'section',
+          text: { type: 'mrkdwn', text: headerText }
+        },
+        { type: 'divider' },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*Next steps:* Be on the lookout for the RFI support chat email and/or call back the caller.`
+          }
+        }
+      ];
+
+      await sendRfiSlackAlert(slackMsg, blocks);
     } catch (e) {
       console.error('[RFI webhook] Slack post error', e?.message || e);
     }
