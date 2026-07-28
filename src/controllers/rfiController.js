@@ -258,14 +258,11 @@ exports.webhookRetellRfi = async (req, res) => {
         { type: 'divider' },
         {
           type: 'section',
-          text: { type: 'mrkdwn', text: headerText }
-        },
-        { type: 'divider' },
-        {
-          type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*Next steps:* Be on the lookout for the RFI support chat email and/or call back the caller.`
+            text:
+              `${headerText}\n\n` +
+              `*Next steps:* Be on the lookout for the RFI support chat email and/or call back the caller.`
           }
         },
         { type: 'divider' }

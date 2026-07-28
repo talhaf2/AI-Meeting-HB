@@ -269,23 +269,8 @@ exports.webapge = async (req, res) => {
                         `<https://app.hubspot.com/contacts/45924609/record/0-1/${contactId}|View Contact>\n` +
                         `*From Huspot Appointments*\n` +
                         `Appointment set for ${appointmentFor}\n` +
-                        `Date/time: *${formattedTime}*`
-                }
-            },
-            { type: "divider" },
-            {
-                type: "section",
-                text: {
-                    type: "mrkdwn",
-                    text: `*Scope of Work:*\n${project_description_webpage_meeting || 'N/A'}`
-                }
-            },
-            { type: "divider" },
-            {
-                type: "section",
-                text: {
-                    type: "mrkdwn",
-                    text:
+                        `Date/time: *${formattedTime}*\n\n` +
+                        `*Scope of Work:*\n${project_description_webpage_meeting || 'N/A'}\n\n` +
                         `*Name:* ${contactName}\n` +
                         `*Number:* ${your_phone_number || 'N/A'}\n` +
                         `*Email:* ${email || 'N/A'}\n` +

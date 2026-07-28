@@ -182,26 +182,11 @@ async function sendDisconnectAlert({ name, email }) {
         text:
           `${tagLine}\n` +
           `⚠️ *Calendar disconnected in HubSpot*\n` +
-          `${displayName}, your calendar isn't syncing with HubSpot right now, so meetings may get booked on your queues without actually landing on your calendar.`
-      }
-    },
-    { type: 'divider' },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text:
+          `${displayName}, your calendar isn't syncing with HubSpot right now, so meetings may get booked on your queues without actually landing on your calendar.\n\n` +
           `*How to reconnect:*\n` +
           `1. In HubSpot, go to Settings → General → Calendar\n` +
-          `2. Under Calendar sync, reconnect your calendar`
-      }
-    },
-    { type: 'divider' },
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `React with :+1: so others know it's handled.`
+          `2. Under Calendar sync, reconnect your calendar\n\n` +
+          `React with :+1: so others know it's handled.`
       }
     },
     { type: 'divider' }

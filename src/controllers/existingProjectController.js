@@ -785,17 +785,10 @@ exports.webhookRetellExisting = async (req, res) => {
       { type: 'divider' },
       {
         type: 'section',
-        text: { type: 'mrkdwn', text: headerParts.join('\n') }
-      },
-      { type: 'divider' },
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: detailsText }
-      },
-      { type: 'divider' },
-      {
-        type: 'section',
-        text: { type: 'mrkdwn', text: nextStepsText }
+        text: {
+          type: 'mrkdwn',
+          text: `${headerParts.join('\n')}\n\n${detailsText}\n\n${nextStepsText}`
+        }
       },
       { type: 'divider' }
     ];
