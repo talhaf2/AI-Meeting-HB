@@ -4,6 +4,7 @@ const { sendEmail } = require('../utils/email');
 const twilio = require('twilio');
 const { json } = require('express');
 const { sendCallSlackMessage, sendSlackMessageToChannel, mentionsFromEmails } = require('../services/slackService');
+const { normalizeProjectRole } = require('../utils/projectRole');
 
 const HUBSPOT_API_KEY = process.env.HUBSPOT_API_KEY;
 const DEFAULT_TIMEZONE = process.env.DEFAULT_TIMEZONE || 'America/Los_Angeles'; // Pacific Time
@@ -243,7 +244,9 @@ exports.bookMeeting = async (req, res) => {
 
     // Normalize free-text fields to allowed lists, fall back to empty if not matched
     const cleanProjectType = normalizeInput(project_type || '', ALLOWED_PROJECT_TYPES);
-    const cleanUserRole = normalizeInput(userRoleValue || '', ALLOWED_USER_ROLES);
+    const cleanUserRole = normalizeProjectRole(
+      normalizeInput(userRoleValue || '', ALLOWED_USER_ROLES) || userRoleValue || ''
+    );
 
     const payload = {
       slug,
@@ -835,7 +838,9 @@ exports.webhookRetell = async (req, res) => {
 
     // Normalize project type and user role
     const cleanProjectType = normalizeInput(projectType, ALLOWED_PROJECT_TYPES);
-    const cleanUserRole = normalizeInput(userRoleValue, ALLOWED_USER_ROLES);
+    const cleanUserRole = normalizeProjectRole(
+      normalizeInput(userRoleValue, ALLOWED_USER_ROLES) || userRoleValue || ''
+    );
 
     // Create contact and deal
     let result;
@@ -1034,7 +1039,9 @@ exports.webhookBland = async (req, res) => {
     const { from, summary, recording_url } = req.body;
 
     const cleanProjectType = normalizeInput(project_type, ALLOWED_PROJECT_TYPES);
-    const cleanUserRole = normalizeInput(userRoleValue, ALLOWED_USER_ROLES);
+    const cleanUserRole = normalizeProjectRole(
+      normalizeInput(userRoleValue, ALLOWED_USER_ROLES) || userRoleValue || ''
+    );
 
     console.log({
       first_name,

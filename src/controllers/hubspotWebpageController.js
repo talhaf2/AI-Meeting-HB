@@ -5,6 +5,7 @@ const { sendSlackMessage, mentionByEmail } = require('../services/slackService')
 const { formatAppointmentTime } = require('../utils/time');
 const logger = require('../utils/logger');
 const { mergeContacts } = require('../hubspot/contactService');
+const { normalizeProjectRole } = require('../utils/projectRole');
 const axios = require('axios');
 const { DateTime } = require('luxon');
 const { HUB_URL, headers } = require('../../config/constants');
@@ -154,7 +155,9 @@ exports.webapge = async (req, res) => {
             return res.status(400).json({ error: "Missing 'email' or contact id" });
         }
 
-        const contactRole = project_role_meeting === "Homeowner" ? "Homeowner" : project_role_hs_meeting;
+        const contactRole = normalizeProjectRole(
+            project_role_meeting === "Homeowner" ? "Homeowner" : project_role_hs_meeting
+        );
         const OwnerId = await getMeetingHostId(hs_object_id);
 
         let mergeFailed = false;
